@@ -3,11 +3,15 @@
 ## Overview (plain language)
 This module teaches you how to safely "detonate" (open and run) a suspicious document inside an isolated Windows analysis machine while pretending to give it a real internet connection. FakeNet-NG is a program that impersonates the whole internet: when the document tries to phone home, download a payload, or contact a command server, FakeNet-NG answers as if it were that server, so nothing real is contacted. Wireshark is a network microscope that records every packet the document sends. Together they let you watch exactly what a malicious document tries to do — which domains it calls, what files it wants — without ever touching the live internet or infecting anything outside the lab.
 
+FakeNet-NG works by combining a traffic **diverter** (which redirects outbound traffic back to the local machine) with **listeners** that emulate common services, so a sample sees plausible responses and continues executing its network behavior. See the FakeNet-NG documentation for the diverter/listener design (https://github.com/mandiant/flare-fakenet-ng).
+
 ## Tools covered
 | Tool | Install | Purpose |
 |---|---|---|
 | FakeNet-NG | Included in FLARE-VM (choco/flare pkg) | Simulates internet services (DNS, HTTP/S, etc.) so malware "connects" while staying contained |
 | Wireshark | Included in FLARE-VM (choco/flare pkg) | Captures and dissects the network traffic generated during detonation |
+
+FakeNet-NG and Wireshark are both distributed as part of the FLARE-VM package set (https://github.com/mandiant/flare-vm). FakeNet-NG is a dynamic network analysis tool that intercepts and redirects all or specific network traffic while simulating legitimate network services, per its project README (https://github.com/mandiant/flare-fakenet-ng). Wireshark is a network protocol analyzer; `tshark` is its command-line counterpart (https://www.wireshark.org/docs/man-pages/tshark.html).
 
 ## Learning objectives
 - Configure and launch FakeNet-NG to intercept all outbound network requests from a detonated document.
@@ -24,30 +28,30 @@ Test-Path "C:\Tools\fakenet\fakenet.exe"
 # Confirm Wireshark / tshark is installed and print versions
 & "C:\Program Files\Wireshark\tshark.exe" --version
 ```
-Expected output: the `Get-Command`/`Test-Path` lines return a path or `True`, and `tshark --version` prints a version banner such as `TShark (Wireshark) 4.x.x`.
+Expected output: the `Get-Command`/`Test-Path` lines return a path or `True`, and `tshark --version` prints a version banner such as `TShark (Wireshark) 4.x.x`. The exact install location may vary; FLARE-VM installs tools under `C:\Tools\` by convention, and Wireshark's default installer path is `C:\Program Files\Wireshark\` (https://www.wireshark.org/docs/wsug_html_chunked/ChBuildInstallWinInstall.html). FakeNet-NG is a Python-based tool; on FLARE-VM it is exposed as `fakenet.exe` (see the FakeNet-NG README installation notes: https://github.com/mandiant/flare-fakenet-ng).
 
 ## Guided walkthrough
-1. Start FakeNet-NG to redirect all traffic to local fake services. It logs every DNS query and HTTP request it answers.
+1. Start FakeNet-NG to redirect all traffic to local fake services. It logs every DNS query and HTTP request it answers. FakeNet-NG must run with administrative privileges because its diverter hooks the Windows network stack (via WinDivert) to reroute packets destined for external hosts back to its local listeners — this is what lets an offline VM behave as if it had internet (see the diverter description in the README: https://github.com/mandiant/flare-fakenet-ng).
 ```powershell
 # Run from an elevated Windows Terminal in the isolated VM (host-only / no real NIC to internet)
 cd C:\Tools\fakenet
 .\fakenet.exe
 ```
-Expected observable output: FakeNet prints `Starting FakeNet-NG ...`, lists listeners (DNS 53, HTTP 80, HTTPS 443, etc.), and shows `Diverter started`.
+Expected observable output: FakeNet prints startup banner lines and lists the listeners it starts from its default configuration (`default.ini`), such as DNS on UDP 53, HTTP on TCP 80, and HTTPS on TCP 443, followed by a message indicating the diverter has started. WHY it matters: if the diverter fails to start (usually a privilege or WinDivert driver issue), traffic will not be redirected and the detonation will simply fail to connect — so confirm the diverter line appears before detonating. Listener defaults are defined in the FakeNet-NG configuration documentation (https://github.com/mandiant/flare-fakenet-ng#configuration).
 
-2. In a second window, start a packet capture so you also have a raw record independent of FakeNet's own logs.
+2. In a second window, start a packet capture so you also have a raw record independent of FakeNet's own logs. Keeping an independent pcap is important because FakeNet's console log is a summary of what its listeners answered, whereas the pcap is ground truth of every packet on the wire — including traffic FakeNet may not have a listener for.
 ```powershell
 & "C:\Program Files\Wireshark\tshark.exe" -i 1 -w C:\Users\analyst\Desktop\detonation.pcap
 ```
-Expected observable output: `Capturing on 'Ethernet'` and a running packet counter.
+Expected observable output: `Capturing on 'Ethernet'` and a running packet counter. WHY the `-i 1`: `tshark -D` lists interfaces by index; interface `1` is typically the first adapter, but confirm with `tshark -D` first because the numbering depends on your VM's adapters (https://www.wireshark.org/docs/man-pages/tshark.html). The `-w` flag writes raw packets to a file rather than dissecting them to the console (https://www.wireshark.org/docs/man-pages/tshark.html).
 
-3. Detonate the benign test document (built in the exercise below). When it runs, FakeNet answers its callbacks; watch FakeNet's console fill with `[HTTP Server]` and `[DNS Server]` lines.
+3. Detonate the benign test document (built in the exercise below). When it runs, FakeNet answers its callbacks; watch FakeNet's console fill with lines showing the DNS name resolved and the HTTP request served by its listeners. WHY: the moment of detonation is when the sample resolves its C2 domain and issues its GET — the sequence (DNS query, then HTTP request to the resolved address) confirms the beacon logic.
 
 4. Stop the capture (Ctrl+C) and read the DNS queries back with tshark.
 ```powershell
 & "C:\Program Files\Wireshark\tshark.exe" -r C:\Users\analyst\Desktop\detonation.pcap -Y "dns.flags.response==0" -T fields -e dns.qry.name
 ```
-Expected observable output: one line per queried hostname, e.g. `lab-c2.example.test`.
+Expected observable output: one line per queried hostname, e.g. `lab-c2.example.test`. WHY the display filter: `dns.flags.response==0` selects only DNS *queries* (not responses), so you see exactly what the sample asked for without duplication; `-T fields -e dns.qry.name` extracts just the queried name field for clean IOC harvesting (Wireshark display-filter and field-extraction syntax: https://www.wireshark.org/docs/man-pages/tshark.html and https://www.wireshark.org/docs/dfref/d/dns.html).
 
 ## Hands-on exercise
 Detonate the benign sample document in this module's `exercise/` directory and identify the network indicator it generates.
@@ -71,14 +75,28 @@ New-Item -ItemType Directory -Force -Path .\exercise | Out-Null
 Set-Content -Path .\exercise\beacon_test.hta -Value $content -Encoding ASCII -NoNewline
 Get-FileHash .\exercise\beacon_test.hta -Algorithm SHA256
 ```
+Note: `.hta` files are executed by `mshta.exe`, a signed Microsoft binary; abuse of `mshta.exe` to run HTA/script content is documented by MITRE as T1218.005 (System Binary Proxy Execution: Mshta) — https://attack.mitre.org/techniques/T1218/005/. The `.example.test` domain uses reserved names (`.test` is reserved by RFC 6761 and `example.*` names are reserved for documentation) so it can never resolve on the real internet, reinforcing containment.
 
 **Task:** With FakeNet-NG and tshark running, execute `mshta.exe .\exercise\beacon_test.hta`, then determine (a) the domain queried, (b) the URL path requested, and (c) the User-Agent string.
 
 ## SOC analyst perspective
-Detonation with a network simulator is how a SOC turns an unknown attachment into concrete detection content. By forcing the document to reveal its DNS lookups, HTTP paths, and User-Agent, the analyst harvests IOCs that feed Suricata and Zeek rules in Security Onion — for example alerting on the observed `LAB-DETONATION-TEST/1.0` User-Agent or the `lab-c2.example.test` domain. In Security Onion you would pivot from the FakeNet-derived indicators into Zeek `dns.log`/`http.log` and Suricata alerts to hunt for the same beaconing pattern across the enterprise. This maps to ATT&CK T1071 (Application Layer Protocol) and T1568 (Dynamic Resolution) detection, giving IR teams a repeatable way to scope which hosts contacted the same infrastructure.
+Detonation with a network simulator is how a SOC turns an unknown attachment into concrete detection content. By forcing the document to reveal its DNS lookups, HTTP paths, and User-Agent, the analyst harvests IOCs that feed Suricata and Zeek rules in Security Onion.
+
+Concrete detection logic and pivots:
+- **Zeek `http.log`** — pivot on `user_agent == "LAB-DETONATION-TEST/1.0"` and `uri == "/gate.php"`; Zeek records `host`, `uri`, and `user_agent` fields per HTTP request (https://docs.zeek.org/en/master/logs/http.html). A non-standard or hard-coded User-Agent that does not match a known browser/software fingerprint is a classic beacon indicator.
+- **Zeek `dns.log`** — pivot on `query == "lab-c2.example.test"` to find every host that resolved the same C2 domain; the `query` and `answers` fields support enterprise-wide scoping (https://docs.zeek.org/en/master/logs/dns.html).
+- **Suricata** — write an alert on the HTTP User-Agent or host; Suricata's `http.user_agent` and `http.host` sticky buffers are the standard keywords for content matching on these fields (https://docs.suricata.io/en/latest/rules/http-keywords.html). Suricata alerts surface in Security Onion's Alerts interface (https://docs.securityonion.net/).
+- **Elastic / Security Onion** — pivot from a matching alert into correlated logs via the Security Onion Console and Hunt interfaces to enumerate all source hosts that contacted the same infrastructure (https://docs.securityonion.net/).
+
+MITRE technique mapping for the detection: T1071.001 (Application Layer Protocol: Web Protocols, https://attack.mitre.org/techniques/T1071/001/), T1568 (Dynamic Resolution, https://attack.mitre.org/techniques/T1568/) for DNS-based callbacks, and T1218.005 (Mshta, https://attack.mitre.org/techniques/T1218/005/) for the execution vector, which you can corroborate on the host with a Sysmon `Process Create` event showing `mshta.exe` spawning and a `Network Connection` event from the same process (Sysmon event reference: https://learn.microsoft.com/en-us/sysinternals/downloads/sysmon). This gives IR teams a repeatable way to scope which hosts contacted the same infrastructure.
 
 ## Attacker perspective
-Attackers weaponize documents (macros, HTA, template injection) precisely because they generate their own outbound traffic once opened: a lure fetches a second-stage payload or beacons to a C2 server. From the attacker's view, the network is where they are most exposed — every stager download (T1105 Ingress Tool Transfer) and every callback (T1071) produces DNS queries, TLS SNI values, HTTP URIs, and often a distinctive User-Agent that becomes a durable fingerprint. Adversaries try to blend in with legitimate CDNs and randomized domains, but detonation captures these artifacts anyway. The very evidence they leave — resolved hostnames, request paths, and headers recorded in the pcap — is what a defender uses to build signatures and attribute campaigns.
+Attackers weaponize documents (macros, HTA, template injection) precisely because they generate their own outbound traffic once opened: a lure fetches a second-stage payload or beacons to a C2 server. Concrete TTPs and the artifacts they leave:
+
+- **Execution via signed proxy binary** — HTA payloads run under `mshta.exe`, a legitimate signed Microsoft binary, so the initial execution blends into normal process activity (T1218.005, https://attack.mitre.org/techniques/T1218/005/). Artifact: a `mshta.exe` process with a command line referencing a local or remote `.hta`, visible in Sysmon/EDR process telemetry (https://learn.microsoft.com/en-us/sysinternals/downloads/sysmon).
+- **Command-and-control over web protocols** — every callback (T1071.001, https://attack.mitre.org/techniques/T1071/001/) produces DNS queries, TLS SNI values, HTTP URIs, and often a distinctive User-Agent that becomes a durable network fingerprint.
+- **Stager download** — a lure that fetches second-stage tooling maps to Ingress Tool Transfer (T1105, https://attack.mitre.org/techniques/T1105/); the download request and the written file on disk are the artifacts.
+- **Evasion** — adversaries try to blend in with legitimate CDNs, use domain fronting or randomized/DGA domains (T1568, https://attack.mitre.org/techniques/T1568/), rotate User-Agents to mimic real browsers, and encrypt C2 in TLS so only the SNI and certificate are observable. Detonation captures these artifacts anyway: resolved hostnames, request paths, and headers recorded in the pcap are exactly what a defender uses to build signatures and attribute campaigns. Note that against a *network simulator* the sample cannot receive its real second stage, so anti-analysis samples may alter behavior if a fake response looks wrong — a reason to keep the raw pcap as ground truth.
 
 ## Answer key
 - (a) Domain queried: `lab-c2.example.test`
@@ -93,20 +111,41 @@ Commands that produce the findings:
 # HTTP request line + User-Agent
 & "C:\Program Files\Wireshark\tshark.exe" -r C:\Users\analyst\Desktop\detonation.pcap -Y "http.request" -T fields -e http.host -e http.request.uri -e http.user_agent
 ```
-FakeNet's own console log will also show the matching `[HTTP Server]` GET line. Sample sha256: recompute at grading time with `Get-FileHash .\exercise\beacon_test.hta -Algorithm SHA256`; the held-out expected digest is stored with the validator (the generator above is deterministic and reproduces the exact same file bytes).
+The `http.request`, `http.host`, `http.request.uri`, and `http.user_agent` fields are standard Wireshark HTTP dissector fields (https://www.wireshark.org/docs/dfref/h/http.html). FakeNet's own console log will also show the matching HTTP GET line served by its HTTP listener. Sample sha256: recompute at grading time with `Get-FileHash .\exercise\beacon_test.hta -Algorithm SHA256`; the held-out expected digest is stored with the validator (the generator above is deterministic and reproduces the exact same file bytes).
 
 ## MITRE ATT&CK & DFIR phase
-- T1071.001 — Application Layer Protocol: Web Protocols (HTTP beacon observed).
-- T1568 — Dynamic Resolution / DNS callbacks captured during detonation.
-- T1105 — Ingress Tool Transfer (payload fetch pattern this technique simulates).
-- T1204.002 — User Execution: Malicious File (document detonation trigger).
-- DFIR phases: Examination / Analysis (dynamic behavioral triage) and Identification (IOC extraction for enterprise-wide scoping).
+- T1071.001 — Application Layer Protocol: Web Protocols (HTTP beacon observed): https://attack.mitre.org/techniques/T1071/001/
+- T1568 — Dynamic Resolution / DNS callbacks captured during detonation: https://attack.mitre.org/techniques/T1568/
+- T1105 — Ingress Tool Transfer (payload fetch pattern this technique simulates): https://attack.mitre.org/techniques/T1105/
+- T1204.002 — User Execution: Malicious File (document detonation trigger): https://attack.mitre.org/techniques/T1204/002/
+- T1218.005 — System Binary Proxy Execution: Mshta (`.hta` executed via `mshta.exe`): https://attack.mitre.org/techniques/T1218/005/
+- DFIR phases: Examination / Analysis (dynamic behavioral triage) and Identification (IOC extraction for enterprise-wide scoping), consistent with the SANS DFIR process (https://www.sans.org/cyber-security-courses/reverse-engineering-malware-malware-analysis-tools-techniques/).
 
 ## Sources
-- FLARE-VM (Mandiant/Google) tool distribution: https://github.com/mandiant/flare-vm
-- FakeNet-NG documentation & repo (Mandiant): https://github.com/mandiant/flare-fakenet-ng
-- Wireshark / tshark documentation: https://www.wireshark.org/docs/
+Claim → source mapping (all URLs are official/authoritative):
+
+- FLARE-VM tool distribution (FakeNet-NG and Wireshark included): https://github.com/mandiant/flare-vm
+- FakeNet-NG purpose, diverter/listener architecture, admin requirement, default listeners (DNS 53 / HTTP 80 / HTTPS 443), and configuration: https://github.com/mandiant/flare-fakenet-ng and https://github.com/mandiant/flare-fakenet-ng#configuration
+- `tshark` command-line flags (`-i`, `-D`, `-w`, `-r`, `-Y`, `-T fields`, `-e`): https://www.wireshark.org/docs/man-pages/tshark.html
+- Wireshark general documentation and Windows install path: https://www.wireshark.org/docs/ and https://www.wireshark.org/docs/wsug_html_chunked/ChBuildInstallWinInstall.html
+- Wireshark DNS display-filter fields (`dns.qry.name`, `dns.flags.response`): https://www.wireshark.org/docs/dfref/d/dns.html
+- Wireshark HTTP display-filter fields (`http.request`, `http.host`, `http.request.uri`, `http.user_agent`): https://www.wireshark.org/docs/dfref/h/http.html
+- Zeek `http.log` fields (host, uri, user_agent): https://docs.zeek.org/en/master/logs/http.html
+- Zeek `dns.log` fields (query, answers): https://docs.zeek.org/en/master/logs/dns.html
+- Suricata HTTP keywords (`http.user_agent`, `http.host`): https://docs.suricata.io/en/latest/rules/http-keywords.html
+- Security Onion (Suricata/Zeek/Elastic pivots, Alerts/Hunt interfaces): https://docs.securityonion.net/
+- Sysmon process-create and network-connection telemetry for host-side corroboration: https://learn.microsoft.com/en-us/sysinternals/downloads/sysmon
+- MITRE ATT&CK T1071 / T1071.001 (Application Layer Protocol: Web Protocols): https://attack.mitre.org/techniques/T1071/ and https://attack.mitre.org/techniques/T1071/001/
+- MITRE ATT&CK T1568 (Dynamic Resolution): https://attack.mitre.org/techniques/T1568/
+- MITRE ATT&CK T1105 (Ingress Tool Transfer): https://attack.mitre.org/techniques/T1105/
+- MITRE ATT&CK T1204.002 (User Execution: Malicious File): https://attack.mitre.org/techniques/T1204/002/
+- MITRE ATT&CK T1218.005 (System Binary Proxy Execution: Mshta): https://attack.mitre.org/techniques/T1218/005/
 - SANS FOR610 Reverse-Engineering Malware (dynamic analysis & network simulation): https://www.sans.org/cyber-security-courses/reverse-engineering-malware-malware-analysis-tools-techniques/
-- MITRE ATT&CK T1071: https://attack.mitre.org/techniques/T1071/
-- MITRE ATT&CK T1204.002: https://attack.mitre.org/techniques/T1204/002/
-- Security Onion documentation (Zeek/Suricata analysis): https://docs.securityonion.net/
+
+## Related modules
+- [Behavioral / dynamic analysis](../15-behavioral-dynamic/README.md) -- shares fakenet-ng for network-based dynamic analysis.
+- [Scenario: packed-malware unpacking workflow](../52-unpacking-case/README.md) -- same learning path (Scenarios), complements dynamic triage.
+- [Scenario: .NET malware analysis](../53-dotnet-malware-case/README.md) -- same learning path (Scenarios), related detonation techniques.
+- [Scenario: shellcode extraction & analysis](../54-shellcode-case/README.md) -- same learning path (Scenarios), pairs with second-stage payload analysis.
+
+<!-- cyberlab-enriched: v1 -->
