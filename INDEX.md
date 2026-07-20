@@ -40,6 +40,7 @@
 | 19 | [19-script-malware](modules/lab-windows/19-script-malware/README.md) | Script malware | 2 | PASS | Y |
 | 27 | [27-ghidra-scripting](modules/lab-windows/27-ghidra-scripting/README.md) | Ghidra decompiler & scripting deep-dive | 2 | PASS | Y |
 | 28 | [28-x64dbg-workflow](modules/lab-windows/28-x64dbg-workflow/README.md) | x64dbg unpacking & debugging workflow | 3 | PASS | Y |
+| 29 | [29-dotnet-deobf-deep](modules/lab-windows/29-dotnet-deobf-deep/README.md) | NET deobfuscation deep-dive | 3 | PASS | Y |
 
 ## Coverage matrix
 
