@@ -25,6 +25,7 @@
 | 24 | [24-wireshark-deep](modules/lab-linux/24-wireshark-deep/README.md) | Wireshark / tshark deep packet analysis | 3 | PASS | Y |
 | 25 | [25-cyberchef-recipes](modules/lab-linux/25-cyberchef-recipes/README.md) | CyberChef recipes for malware data | 2 | PASS | Y |
 | 26 | [26-metasploit-workflow](modules/lab-linux/26-metasploit-workflow/README.md) | Metasploit Framework workflow (training range) | 2 | PASS | Y |
+| 32 | [32-remnux-static-triage](modules/lab-linux/32-remnux-static-triage/README.md) | REMnux static triage (DIE/ssdeep/pefile) | 3 | PASS | Y |
 
 ## LAB-WINDOWS modules
 
