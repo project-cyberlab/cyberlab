@@ -36,6 +36,7 @@
 | 40 | [40-password-cracking](modules/lab-linux/40-password-cracking/README.md) | Password cracking (hashcat / John) | 2 | PASS | Y |
 | 41 | [41-web-app-testing](modules/lab-linux/41-web-app-testing/README.md) | Web app testing (Burp Suite / nmap) | 2 | PASS | Y |
 | 47 | [47-ransomware-memory-case](modules/lab-linux/47-ransomware-memory-case/README.md) | Scenario: ransomware memory investigation | 3 | PASS | Y |
+| 48 | [48-phishing-doc-case](modules/lab-linux/48-phishing-doc-case/README.md) | Scenario: phishing document investigation | 3 | PASS | Y |
 
 ## LAB-WINDOWS modules
 
