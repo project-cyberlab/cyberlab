@@ -63,6 +63,7 @@
 | 44 | [44-windbg-deep](modules/lab-windows/44-windbg-deep/README.md) | WinDbg debugging deep-dive | 2 | PASS | Y |
 | 45 | [45-ilspy-dotnet-deep](modules/lab-windows/45-ilspy-dotnet-deep/README.md) | ILSpy .NET decompilation deep-dive | 2 | PASS | Y |
 | 46 | [46-cutter-windows](modules/lab-windows/46-cutter-windows/README.md) | Cutter (Rizin) RE on Windows | 2 | PASS | Y |
+| 52 | [52-unpacking-case](modules/lab-windows/52-unpacking-case/README.md) | Scenario: packed-malware unpacking workflow | 3 | PASS | Y |
 
 ## Coverage matrix
 
