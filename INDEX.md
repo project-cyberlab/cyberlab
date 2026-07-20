@@ -39,6 +39,7 @@
 | 48 | [48-phishing-doc-case](modules/lab-linux/48-phishing-doc-case/README.md) | Scenario: phishing document investigation | 3 | PASS | Y |
 | 49 | [49-intrusion-timeline-case](modules/lab-linux/49-intrusion-timeline-case/README.md) | Scenario: intrusion timeline reconstruction | 3 | PASS | Y |
 | 50 | [50-c2-network-hunt](modules/lab-linux/50-c2-network-hunt/README.md) | Scenario: C2 network traffic hunt | 3 | PASS | Y |
+| 51 | [51-linux-triage-workflow](modules/lab-linux/51-linux-triage-workflow/README.md) | Scenario: end-to-end host triage | 3 | PASS | Y |
 
 ## LAB-WINDOWS modules
 
