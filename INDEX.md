@@ -29,6 +29,7 @@
 | 15 | [15-behavioral-dynamic](modules/lab-windows/15-behavioral-dynamic/README.md) | Behavioral / dynamic analysis | 5 | PASS | Y |
 | 16 | [16-process-memory](modules/lab-windows/16-process-memory/README.md) | Process memory forensics | 3 | PASS | Y |
 | 17 | [17-shellcode-analysis](modules/lab-windows/17-shellcode-analysis/README.md) | Shellcode analysis | 3 | PASS | Y |
+| 18 | [18-malicious-office-pdf](modules/lab-windows/18-malicious-office-pdf/README.md) | Malicious Office / PDF | 2 | PASS | Y |
 
 ## Coverage matrix
 
@@ -51,7 +52,7 @@
 | Behavioral / dynamic analysis | lab-windows | 15-behavioral-dynamic | Covered | PASS |
 | Process memory forensics | lab-windows | 16-process-memory | Covered | PASS |
 | Shellcode analysis | lab-windows | 17-shellcode-analysis | Covered | PASS |
-| Malicious Office / PDF | lab-windows | 18-malicious-office-pdf | Planned | -- |
+| Malicious Office / PDF | lab-windows | 18-malicious-office-pdf | Covered | PASS |
 | Script malware | lab-windows | 19-script-malware | Planned | -- |
 
-_Coverage: 17 / 19 families have a module._
+_Coverage: 18 / 19 families have a module._
