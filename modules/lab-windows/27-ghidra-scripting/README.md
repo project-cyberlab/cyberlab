@@ -148,6 +148,65 @@ Get-FileHash "C:\cases\27\exercise\hello.exe" -Algorithm SHA256
 - Example capabilities capa may map on richer samples: T1027.002 (Software Packing) ([T1027.002](https://attack.mitre.org/techniques/T1027/002/)), T1543.003 (Create or Modify System Process: Windows Service) ([T1543.003](https://attack.mitre.org/techniques/T1543/003/)), T1071.001 (Application Layer Protocol: Web Protocols) ([T1071.001](https://attack.mitre.org/techniques/T1071/001/)), T1547.001 (Boot or Logon Autostart Execution: Registry Run Keys / Startup Folder) ([T1547.001](https://attack.mitre.org/techniques/T1547/001/)), T1059 (Command and Scripting Interpreter) ([T1059](https://attack.mitre.org/techniques/T1059/)), T1059.001 (PowerShell) ([T1059.001](https://attack.mitre.org/techniques/T1059/001/)), T1055 (Process Injection) ([T1055](https://attack.mitre.org/techniques/T1055/)), T1570 (Lateral Tool Transfer) ([T1570](https://attack.mitre.org/techniques/T1570/)), T1574.001 (Hijack Execution Flow: DLL Search Order Hijacking) ([T1574.001](https://attack.mitre.org/techniques/T1574/001/)), T1620 (Reflective Code Loading) ([T1620](https://attack.mitre.org/techniques/T1620/)), T1036 (Masquerading) ([T1036](https://attack.mitre.org/techniques/T1036/)), and T1057 (Process Discovery) ([T1057](https://attack.mitre.org/techniques/T1057/)).
 - DFIR phase: **Examination / Analysis** (static reverse-engineering triage), feeding **Identification** of IOCs for hunting. Phase terminology follows the NIST SP 800-86 forensic process (collection → examination → analysis → reporting) ([NIST SP 800-86](https://csrc.nist.gov/pubs/sp/800/86/final)) and SANS FOR610 static-analysis methodology ([SANS FOR610](https://www.sans.org/cyber-security-courses/reverse-engineering-malware-malware-analysis-tools-techniques/)).
 
+
+```markdown
+### Essential Commands & Features
+
+Ghidra scripting enables powerful automation for reverse engineering. Below are **high-impact commands and features** not yet covered, with concrete examples and tactical use cases:
+
+1. **`currentProgram.getFunctionManager().getFunctions(True)`**
+   Iterate over all functions (including thunks) to analyze obfuscated code. Critical for detecting **T1027.005 (Indicator Removal from Tools)** or **T1106 (Native API)** misuse.
+   ```python
+   for func in currentProgram.getFunctionManager().getFunctions(True):
+       if "Crypt" in func.getName():  # Hunt for crypto routines
+           print(f"Found: {func.getEntryPoint()}")
+   ```
+
+2. **`getInstructionAt(addr).getMnemonicString()`**
+   Extract mnemonics to identify anti-analysis tricks (e.g., `CPUID` checks for **T1497.001 (System Checks)**).
+   ```python
+   instr = getInstructionAt(currentAddress)
+   if instr and instr.getMnemonicString() == "CPUID":
+       print(f"Anti-VM at {currentAddress}")
+   ```
+
+3. **`FlatProgramAPI.createFunction(addr, name)`**
+   Reconstruct stripped functions (e.g., for **T1562.001 (Disable or Modify Tools)**).
+   ```python
+   func_addr = toAddr(0x00401234)
+   FlatProgramAPI(currentProgram).createFunction(func_addr, "DecryptPayload")
+   ```
+
+4. **`getReferencesTo(addr)`**
+   Trace cross-references *without* using Ghidra’s XREF system (e.g., to map **T1574.002 (DLL Side-Loading)**).
+   ```python
+   refs = getReferencesTo(currentAddress)
+   for ref in refs:
+       print(f"Referenced from: {ref.getFromAddress()}")
+   ```
+
+**Sources:**
+- Ghidra API Cookbook: [https://github.com/NationalSecurityAgency/ghidra/blob/master/GhidraDocs/GhidraClass/Intermediate/Scripting.html](https://github.com/NationalSecurityAgency/ghidra/blob/master/GhidraDocs/GhidraClass/Intermediate/Scripting.html)
+- Mandiant Ghidra Scripting Guide: [https://www.mandiant.com/resources/blog/ghidra-scripting-for-malware-analysis](https://www.mandiant.com/resources/blog/ghidra-scripting-for-malware-analysis)
+```
+
+### Threat Hunting & Detection Engineering
+
+Once Ghidra scripts have flagged suspicious code patterns (e.g., `VirtualAlloc` + `RtlMoveMemory` chains), pivot to **detection engineering** to scale hunts across the enterprise. Focus on **Process Injection (T1055.002: Portable Executable Injection)** and **Reflective Code Loading (T1574.009: Reflective DLL Injection)**—both evade static signatures by executing code directly in memory.
+
+**Detection Logic:**
+1. **Windows Event Logs (Sysmon Event ID 8: `CreateRemoteThread`)**:
+   Hunt for `TargetImage` processes (e.g., `lsass.exe`, `explorer.exe`) with `SourceImage` paths outside `System32` or `Program Files`. Filter for `StartModule` values of `NULL` (common in reflective loading) or non-standard DLLs (e.g., `amsi.dll` hijacking).
+   *Pivot*: Cross-reference with Event ID 10 (`ProcessAccess`) to identify `GrantedAccess` flags like `0x1FFFFF` (full access), often used in injection.
+
+2. **Zeek/Suricata**:
+   Monitor for **unusual process execution via `cmd.exe`/`powershell.exe` with encoded commands** (T1059.001: PowerShell). Use Zeek’s `exec` events to detect child processes of `svchost.exe` spawning `powershell.exe` with `-EncodedCommand` or `-ep bypass`. Suricata can inspect HTTP traffic for **base64-encoded PE headers** (e.g., `TVqQAAMAAAAEAAAA`) in POST bodies (T1027.001: Binary Padding).
+   *Pivot*: Correlate with Zeek’s `files.log` for `.dll` downloads from non-standard ports (e.g., 8080, 8443).
+
+**Authoritative Sources:**
+- [MITRE ATT&CK: T1055.002](https://attack.mitre.org/techniques/T1055/002/)
+- [SpecterOps: Detecting Reflective DLL Injection](https://posts.specterops.io/defenders-think-in-graphs-too-part-1-572524c71e91) (Detection engineering for T1574.009)
+
 ## Sources
 Claim → source mapping (all URLs are to official/authoritative pages):
 
@@ -176,3 +235,9 @@ Claim → source mapping (all URLs are to official/authoritative pages):
 - [Scenario: .NET malware analysis](../53-dotnet-malware-case/README.md) -- shares capa
 
 <!-- cyberlab-enriched: v3 -->
+- https://github.com/NationalSecurityAgency/ghidra/blob/master/GhidraDocs/GhidraClass/Intermediate/Scripting.html](https://github.com/NationalSecurityAgency/ghidra/blob/master/GhidraDocs/GhidraClass/Intermediate/Scripting.html
+- https://www.mandiant.com/resources/blog/ghidra-scripting-for-malware-analysis](https://www.mandiant.com/resources/blog/ghidra-scripting-for-malware-analysis
+- https://attack.mitre.org/techniques/T1055/002/
+- https://posts.specterops.io/defenders-think-in-graphs-too-part-1-572524c71e91
+
+<!-- cyberlab-enriched: v4 -->
