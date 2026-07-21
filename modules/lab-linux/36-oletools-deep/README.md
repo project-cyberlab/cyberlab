@@ -205,6 +205,73 @@ For authoritative guidance on oletools and macro validation, see:
 [https://www.decalage.info/python/oletools](https://www.decalage.info/python/oletools)  
 [https://blog.didierstevens.com/2012/06/17/oletools-overview/](https://blog.didierstevens.com/2012/06/17/oletools-overview/)
 
+
+### Essential Commands & Features
+
+The `oledump.py` and `olevba` tools offer powerful features for analyzing malicious Office documents. Below are **critical but often overlooked** commands and flags with concrete examples:
+
+#### **oledump.py**
+- **`-s <stream>` (Select Stream)**
+  Extract a specific stream by index (e.g., `-s 8` for stream 8). Useful when analyzing embedded macros or obfuscated payloads.
+  ```bash
+  oledump.py malicious.doc -s 8
+  ```
+  *When to use:* Target known malicious streams (e.g., `Macros/VBA/ThisDocument`) without parsing the entire file.
+
+- **`-v` (Decompress VBA)**
+  Decompress and display VBA code from streams. Essential for analyzing obfuscated macros (e.g., **T1137.001: Office Application Startup**).
+  ```bash
+  oledump.py malicious.xls -s 3 -v
+  ```
+
+- **`-d` (Dump Raw)**
+  Dump raw stream data (hex/ASCII). Useful for extracting non-VBA artifacts (e.g., **T1564.004: Hide Artifacts: NTFS File Attributes**).
+  ```bash
+  oledump.py malicious.doc -s 5 -d
+  ```
+
+#### **olevba**
+- **`--deobfuscate`**
+  Attempt to deobfuscate VBA code (e.g., string concatenation, junk code removal). Critical for **T1027.002: Obfuscated Files or Information: Software Packing**.
+  ```bash
+  olevba --deobfuscate malicious.doc
+  ```
+
+- **`--decode`**
+  Decode common encoding schemes (e.g., Base64, Hex). Useful for **T1132.002: Data Encoding: Non-Standard Encoding**.
+  ```bash
+  olevba --decode malicious.xls
+  ```
+
+- **`--reveal`**
+  Highlight suspicious keywords (e.g., `Shell`, `CreateObject`). Helps identify **T1059.003: Command and Scripting Interpreter: Windows Command Shell**.
+  ```bash
+  olevba --reveal malicious.doc
+  ```
+
+**Sources:**
+- [Didier Stevens’ oledump.py Documentation](https://blog.didierstevens.com/programs/oledump-py/)
+- [OLE Tools GitHub Wiki (Deobfuscation Guide)](https://github.com/decalage2/oletools/wiki/olevba#deobfuscation)
+
+### Threat Hunting & Detection Engineering
+
+When hunting for **OLE-embedded threats** (e.g., malicious macros, embedded executables, or obfuscated scripts), focus on **process execution chains** and **unusual file interactions**. Key log sources include:
+
+- **Windows Event ID 4688** (Process Creation): Hunt for `winword.exe`, `excel.exe`, or `powerpnt.exe` spawning `cmd.exe`, `powershell.exe`, or `wscript.exe` with suspicious arguments (e.g., `-nop`, `-ep bypass`, `-encodedcommand`). Pivot on the **ParentProcessId** to trace execution back to the OLE host process.
+- **Sysmon Event ID 1** (Process Creation): Filter for **CommandLine** fields containing `rundll32.exe` with non-standard DLLs (e.g., `*.tmp` files in `%TEMP%`) or **ImageLoad** events (Event ID 7) for unexpected DLLs loaded by Office processes.
+- **Zeek/Suricata**: Monitor for **HTTP requests** (Zeek `http.log`) or **SMB traffic** (Zeek `smb_files.log`) where Office files (`*.doc`, `*.xls`, `*.ppt`) are downloaded from external IPs or written to unusual paths (e.g., `\\tsclient\`). Alert on **file hashes** (MD5/SHA256) matching known malicious OLE samples.
+
+**MITRE ATT&CK Techniques**:
+- **[T1202: Indirect Command Execution](https://attack.mitre.org/techniques/T1202/)** – Detect `rundll32.exe` or `regsvr32.exe` spawned by Office processes to execute embedded payloads.
+- **[T1553.002: Subvert Trust Controls: Code Signing](https://attack.mitre.org/techniques/T1553/002/)** – Hunt for Office files with **invalid or revoked signatures** (check `Authenticode` fields in Sysmon Event ID 1 or `pe` logs in Zeek).
+
+**Detection Pivots**:
+- **Parent-Child Process Anomalies**: `winword.exe` → `certutil.exe` (T1218.007) or `excel.exe` → `mshta.exe` (T1218.005).
+- **File System Artifacts**: Look for `.tmp` files in `%TEMP%` or `%APPDATA%` with high entropy (obfuscation) or dual extensions (e.g., `document.doc.js`).
+
+**Sources**:
+- [CERT-EU: Hunting for Malicious Office Documents](https://cert.europa.eu/static/WhitePapers/CERT-EU-SWP_1
+
 ## Sources
 Claim → source mapping (all URLs are to official/authoritative pages):
 
@@ -243,3 +310,9 @@ Claim → source mapping (all URLs are to official/authoritative pages):
 - https://blog.didierstevens.com/2012/06/17/oletools-overview/](https://blog.didierstevens.com/2012/06/17/oletools-overview/
 
 <!-- cyberlab-enriched: v3 -->
+- https://github.com/decalage2/oletools/wiki/olevba#deobfuscation
+- https://attack.mitre.org/techniques/T1202/
+- https://attack.mitre.org/techniques/T1553/002/
+- https://cert.europa.eu/static/WhitePapers/CERT-EU-SWP_1
+
+<!-- cyberlab-enriched: v4 -->
