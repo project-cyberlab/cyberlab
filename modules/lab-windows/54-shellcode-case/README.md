@@ -126,6 +126,30 @@ Expected trace ends with a `WinExec(calc.exe)`-style line and a step-count summa
 - **T1105 — Ingress Tool Transfer** (staging variants that download follow-on payloads). https://attack.mitre.org/techniques/T1105/
 - **DFIR phase:** Examination / Analysis (reverse engineering and behavioral triage of extracted artifacts).
 
+
+### Threat Hunting & Detection Engineering
+
+Once shellcode behavior is profiled in **scdbg** or **x64dbg**, pivot to threat hunting using concrete log sources and detection logic—*without* creating hands-on rules directly from debugger findings. Focus on **process injection** and **indirect command execution** patterns tied to shellcode delivery.
+
+**Detection Logic & Hunt Pivots:**
+- **Windows Event Logs (Sysmon Event ID 8: `CreateRemoteThread`)**
+  Hunt for `TargetImage` processes (e.g., `explorer.exe`, `svchost.exe`) with `SourceImage` binaries in temp/user-writeable paths (e.g., `%APPDATA%`, `%TEMP%`). Filter for `StartAddress` values outside known module ranges (e.g., `0x00000000`–`0x7FFFFFFF`).
+  *MITRE ATT&CK Technique:* **[T1055.001: Process Injection: Dynamic-link Library Injection](https://attack.mitre.org/techniques/T1055/001/)**.
+
+- **EDR/XDR Telemetry (Process Creation + Module Loads)**
+  Correlate `process creation` events (Event ID 1) with anomalous `LoadImage` calls (Event ID 7) for unsigned DLLs or shellcode-like memory regions (e.g., `Protection: PAGE_EXECUTE_READWRITE`). Prioritize parent-child mismatches (e.g., `powershell.exe` spawning `rundll32.exe`).
+  *MITRE ATT&CK Technique:* **[T1569.002: System Services: Service Execution](https://attack.mitre.org/techniques/T1569/002/)**.
+
+- **Network Telemetry (Zeek/Suricata)**
+  Hunt for HTTP responses with `Content-Type: application/octet-stream` and no `Content-Disposition` header, paired with subsequent `CreateRemoteThread` events. Pivot on `destination.port: 443` and `user_agent` anomalies (e.g., `curl`/`wget` impersonation).
+
+**Sources:**
+- [CISA Alert AA22-152A: Detecting Post-Compromise Threat Activity](https://www.cisa.gov/uscert/ncas/alerts/aa22-152a)
+- [Elastic Security Labs: Detecting Process Injection Techniques](https://www.elastic.co/security-labs/detecting-process-injection-techniques)
+
+### Adversary Emulation & Red-Team Perspective
+From an adversary's perspective, the 54-shellcode-case can be exploited to execute arbitrary code on a target system. An attacker may utilize techniques such as [T1204](https://attack.mitre.org/techniques/T1204) - "User Execution" to trick a user into executing the malicious shellcode, or [T1625](https://attack.mitre.org/techniques/T1625) - "Sensitive Information Cache" to cache sensitive information and evade detection. The adversary may also attempt to evade detection by modifying the shellcode to avoid signature-based detection, or by using anti-debugging techniques to hinder analysis. Artifacts left behind by the attacker may include unusual network activity, suspicious process creation, or modifications to system files. To detect and respond to such threats, defenders should monitor system logs for suspicious activity and implement robust security controls, such as input validation and memory protection. For more information on adversary emulation and red-team tactics, see the [Cyber and Infrastructure Security Agency (CISA) - Red Team](https://www.cisa.gov/red-team) and [Center for Internet Security (CIS) - Red Team](https://www.cisecurity.org/white-papers/cis-red-team-operations/).
+
 ## Sources
 Claim → source mapping (all URLs are official/authoritative):
 
@@ -152,3 +176,13 @@ Claim → source mapping (all URLs are official/authoritative):
 - [x64dbg unpacking & debugging workflow](../28-x64dbg-workflow/README.md) -- shares x64dbg workflow for confirming emulator findings.
 
 <!-- cyberlab-enriched: v1 -->
+- https://attack.mitre.org/techniques/T1055/001/
+- https://attack.mitre.org/techniques/T1569/002/
+- https://www.cisa.gov/uscert/ncas/alerts/aa22-152a
+- https://www.elastic.co/security-labs/detecting-process-injection-techniques
+- https://attack.mitre.org/techniques/T1204
+- https://attack.mitre.org/techniques/T1625
+- https://www.cisa.gov/red-team
+- https://www.cisecurity.org/white-papers/cis-red-team-operations/
+
+<!-- cyberlab-enriched: v2 -->
