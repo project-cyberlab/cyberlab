@@ -183,6 +183,63 @@ The following commands and flags expand your analysis capabilities with `pdfid` 
 ### Threat Hunting & Detection Engineering
 To detect and hunt threats related to PDF analysis, focus on techniques such as [T1588: Obtain Capabilities](https://attack.mitre.org/techniques/T1588/) and [T1590: Gather Technical Data](https://attack.mitre.org/techniques/T1590/), which involve adversaries gathering information about the target environment and its capabilities. Analyze Windows Event IDs related to process creation (ID 4688) and command-line arguments to identify suspicious activity. In network logs, inspect Zeek's `http` log for unusual User-Agent headers or Suricata's `http` events for malicious PDF downloads. Threat hunters can pivot on PDF metadata, such as creator or author fields, to identify potentially malicious documents. Additionally, monitor system calls related to PDF parsing libraries to detect exploitation attempts. For more information on threat hunting and detection engineering, visit the [Cyber and Infrastructure Security Agency (CISA)](https://www.cisa.gov/) and [National Institute of Standards and Technology (NIST)](https://www.nist.gov/) websites for guidance on detecting and responding to cyber threats.
 
+
+### Essential Commands & Features
+
+Many analysts rely on default `pdf-parser` and `pdfid` output, but advanced flags unlock deeper forensic visibility.
+
+**pdf-parser Flags Not Yet Demonstrated**
+
+- **`-s` (search)** – Scans for a specific string inside any object (e.g., `/JavaScript`).  
+  `python pdf-parser.py -s /JavaScript suspect.pdf`  
+  *Use when hunting for script injection without reviewing every object.*
+
+- **`-f` (filter decode)** – After an object, attempts to decompress or decode filters (e.g., FlateDecode, ASCIIHexDecode).  
+  `python pdf-parser.py -f -o 7 suspect.pdf`  
+  *Essential for extracting the raw payload from compressed streams.*
+
+- **`-o` (object ID)** – Shows only the specified object number.  
+  `python pdf-parser.py -o 3 suspect.pdf`  
+  *Drill into a single suspicious object quickly, especially when `pdfid` flags an object count mismatch.*
+
+- **`-d` (dump)** – Extracts the raw, unfiltered content of a stream to stdout.  
+  `python pdf-parser.py -d -o 5 suspect.pdf > stream5.bin`  
+  *Best for saving binary artifacts (e.g., an embedded EXE) for offline analysis.*
+
+**pdfid Flag Not Yet Demonstrated**
+
+- **`-n` (no stats)** – Suppresses the statistical summary line, outputting only indicator rows (e.g., `/JavaScript`, `/OpenAction`).  
+  `python pdfid.py -n suspect.pdf`  
+  *Ideal for scripting: pipe results into `grep` to flag malicious indicators without noise.*
+
+These commands directly support detecting **MITRE ATT&CK T1059.003 (Windows Command Shell)** and **T1566.003 (Spearphishing via Service)**, both commonly delivered through malicious PDFs that invoke cmd.exe or point to external URLs.
+
+**Authoritative References**
+
+- Didier Stevens, pdf-parser documentation and examples: https://blog.didierstevens.com/programs/pdf-tools/
+- CISA, "Analyzing Malicious PDF Files": https://www.cisa.gov/news-events/alerts/2020/09/24/analyzing-malicious-pdf-files
+
+### Adversary Emulation & Red-Team Perspective
+
+From a red-team perspective, PDF analysis is critical for crafting stealthy payloads and evading detection. Attackers frequently abuse PDFs to deliver malicious content via **phishing (T1566.001: Spearphishing Attachment)** or **drive-by compromise (T1566.003: Spearphishing via Service)**, embedding malicious JavaScript, exploits (e.g., CVE-2023-21608), or embedded executables. Common **Tactics, Techniques, and Procedures (TTPs)** include:
+- **Obfuscation (T1027.009: Embedded Payloads)**: Hiding malicious code in streams, objects, or metadata using encoding (e.g., Base64, hex) or compression (e.g., FlateDecode).
+- **Exploitation of Legitimate Features**: Abusing `/OpenAction`, `/AA` (Additional Actions), or `/JavaScript` entries to trigger execution upon file open.
+- **Living-off-the-Land (T1218.010: Signed Binary Proxy Execution - Regsvr32)**: Using PDFs to drop and execute scripts or DLLs via trusted binaries.
+
+**Artifacts left behind** include:
+- Unusual `/JavaScript` or `/OpenAction` entries in the PDF structure.
+- Suspicious URIs or embedded files (e.g., `.exe`, `.bat`) in the `/EmbeddedFiles` dictionary.
+- Anomalous process execution (e.g., `AcroRd32.exe` spawning `cmd.exe` or `powershell.exe`).
+
+**Evasion considerations** involve:
+- **Sandbox Detection**: Checking for virtualized environments via JavaScript (e.g., `app.viewerVersion` or `navigator.userAgent`).
+- **Delayed Execution**: Using `/AA` triggers (e.g., `/O` for open, `/C` for close) to bypass real-time monitoring.
+- **Polymorphism**: Dynamically generating PDFs with randomized object IDs or obfuscated code to evade signature-based detection.
+
+For further reading:
+- [CERT-EU: PDF Analysis for Malware Detection](https://cert.europa.eu/static/WhitePapers/CERT-EU-SWP_17_001_pdf_v1_1.pdf)
+- [FireEye: PDF Exploits and Evasion Techniques](https://www.fireeye.com/blog/threat-research/2020/04/pdfs-weaponized.html)
+
 ## Sources
 Claim → source mapping (all URLs are to official/authoritative pages):
 
@@ -222,3 +279,8 @@ Claim → source mapping (all URLs are to official/authoritative pages):
 - https://www.nist.gov/
 
 <!-- cyberlab-enriched: v3 -->
+- https://www.cisa.gov/news-events/alerts/2020/09/24/analyzing-malicious-pdf-files
+- https://cert.europa.eu/static/WhitePapers/CERT-EU-SWP_17_001_pdf_v1_1.pdf
+- https://www.fireeye.com/blog/threat-research/2020/04/pdfs-weaponized.html
+
+<!-- cyberlab-enriched: v4 -->
