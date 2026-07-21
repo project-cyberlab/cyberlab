@@ -87,6 +87,17 @@ Memory forensics is the backbone of incident response when malware is fileless o
 - **Confirm the technique on the host.** Use `windows.malfind` to expose RWX injected regions (T1055 — Process Injection, https://attack.mitre.org/techniques/T1055/); use `windows.pstree`/`windows.pslist` to catch a legitimate-sounding image name with an anomalous parent or path (T1036.005 — Masquerading: Match Legitimate Name or Location, https://attack.mitre.org/techniques/T1036/005/); use `windows.psscan` versus `windows.pslist` diffing to catch unlinked/hidden processes.
 - **Enrich and feed back.** `bulk_extractor` harvests URLs, domains, and IPs from the dump; enrich those against threat intel and add them as new Zeek/Suricata pivots or Security Onion indicators, closing the loop between network detection and host root-cause and supporting containment decisions. Detection-engineering and hunting guidance: SANS FOR508 — https://www.sans.org/cyber-security-courses/advanced-incident-response-threat-hunting/
 
+**Additional MITRE ATT&CK techniques and detection logic:**
+
+- **T1040 — Network Discovery** (detected via `windows.netscan` and `bulk_extractor`): A malicious process may scan the network or enumerate hosts. Use `windows.netscan` to detect endpoints with unusual local/remote IPs or domains that may indicate network discovery activity. Correlate with `bulk_extractor` output for any suspicious domain or IP in the `domain.txt` or `ip.txt` files.
+- **T1112 — Modify Registry** (detected via `windows.registry`): If an attacker modifies the registry to persist or hide activity, the `windows.registry` plugin can be used to inspect registry hives in memory. This can help detect registry modifications that are not reflected on disk or that are hidden from standard tools.
+
+**Threat-hunting pivots:**
+
+- Use `windows.malfind` and `windows.netscan` together to detect injected code that is connected to a network endpoint (e.g., a suspicious PID with RWX memory and a C2 IP in `windows.netscan`). This aligns with T1055 and T1071.
+- Use `windows.pstree` to detect processes with anomalous parent relationships (e.g., `svch0st.exe` with a parent of `explorer.exe` instead of `services.exe`). This aligns with T1036.005.
+- Use `bulk_extractor` to extract any suspicious URLs or IPs from the memory image and cross-reference them with threat intelligence feeds or SIEM systems to detect potential C2 activity (T1071).
+
 ## Attacker perspective
 Attackers deliberately avoid disk to evade AV, using in-memory shellcode, reflective DLL loading, and process injection (T1055, https://attack.mitre.org/techniques/T1055/) or process hollowing (T1055.012 — Process Hollowing, https://attack.mitre.org/techniques/T1055/012/) to hide inside legitimate processes, plus renaming binaries to look like `svchost.exe`/`lsass.exe` (masquerading, T1036.005, https://attack.mitre.org/techniques/T1036/005/). Common concrete TTPs and the artifacts they leave in RAM:
 
@@ -97,6 +108,11 @@ Attackers deliberately avoid disk to evade AV, using in-memory shellcode, reflec
 - **Credential theft** (e.g. LSASS access, T1003.001 — OS Credential Dumping: LSASS Memory, https://attack.mitre.org/techniques/T1003/001/) leaves plaintext secrets, tokens, and hashes recoverable by string carving with `bulk_extractor`.
 
 **Evasion:** attackers may sleep-encrypt or re-protect payload memory back to `RW`/`RX` between beacons to defeat naive RWX scanning, timestomp create-times, spoof PPIDs (parent PID spoofing, T1134.004 — Access Token Manipulation: Parent PID Spoofing, https://attack.mitre.org/techniques/T1134/004/) to defeat `pstree` parentage checks, and wipe/overwrite freed pool memory to reduce `psscan`/`bulk_extractor` yield. This is why corroborating multiple plugins beats trusting any single one.
+
+**Additional evasion techniques:**
+
+- **T1027 — Obfuscated Files or Information** (e.g., using XOR or custom encoding to obfuscate memory contents): Attackers may encode or obfuscate their payloads in memory to avoid detection by `malfind` or `bulk_extractor`. This can be detected by analyzing memory regions with unusual entropy or by using tools like `entropy` or `strings` to identify obfuscated content.
+- **T1025 — Obfuscated Files or Information** (e.g., using custom encryption or compression in memory): Attackers may compress or encrypt their payloads in memory to avoid detection by `malfind` or `bulk_extractor`. This can be detected by analyzing memory regions with unusual entropy or by using tools like `entropy` or `strings` to identify obfuscated content.
 
 ## Answer key
 - **OS build:** `Windows 10 x64` (from `windows.info`).
@@ -125,6 +141,9 @@ Expected: `bulk_extractor` lists the fake C2 URL/IP embedded in the sample; `net
 - **T1071 — Application Layer Protocol / C2** (endpoints from `netscan` + URLs/IPs from `bulk_extractor`) — https://attack.mitre.org/techniques/T1071/
 - **T1003.001 — OS Credential Dumping: LSASS Memory** (secrets recoverable via `bulk_extractor` string carving) — https://attack.mitre.org/techniques/T1003/001/
 - **T1134.004 — Access Token Manipulation: Parent PID Spoofing** (evasion against `pstree` parentage) — https://attack.mitre.org/techniques/T1134/004/
+- **T1040 — Network Discovery** (detected via `windows.netscan` and `bulk_extractor`) — https://attack.mitre.org/techniques/T1040/
+- **T1040.001 — Network Discovery: Passive DNS** (detected via `bulk_extractor` output in `domain.txt`) — https://attack.mitre.org/techniques/T1040/001/
+- **T1112 — Modify Registry** (detected via `windows.registry`) — https://attack.mitre.org/techniques/T1112/
 - **DFIR phases:** Identification (locate the anomalous process/connection) → Examination/Analysis (dump regions, extract IOCs, establish root cause), aligned with SANS FOR508 IR methodology — https://www.sans.org/cyber-security-courses/advanced-incident-response-threat-hunting/
 
 ## Sources
@@ -145,6 +164,9 @@ Claim → source mapping (all URLs are official tool docs/repos, MITRE ATT&CK, S
 - MITRE ATT&CK T1071 (Application Layer Protocol) — https://attack.mitre.org/techniques/T1071/
 - MITRE ATT&CK T1003.001 (OS Credential Dumping: LSASS Memory) — https://attack.mitre.org/techniques/T1003/001/
 - MITRE ATT&CK T1134.004 (Access Token Manipulation: Parent PID Spoofing) — https://attack.mitre.org/techniques/T1134/004/
+- MITRE ATT&CK T1040 (Network Discovery) — https://attack.mitre.org/techniques/T1040/
+- MITRE ATT&CK T1040.001 (Network Discovery: Passive DNS) — https://attack.mitre.org/techniques/T1040/001/
+- MITRE ATT&CK T1112 (Modify Registry) — https://attack.mitre.org/techniques/T1112/
 
 ## Related modules
 - [Memory forensics](../02-memory-forensics/README.md) -- shares bulk_extractor for IOC carving from RAM images.
@@ -152,4 +174,4 @@ Claim → source mapping (all URLs are official tool docs/repos, MITRE ATT&CK, S
 - [File carving](../05-file-carving/README.md) -- shares bulk_extractor as a structure-agnostic feature/string carver.
 - [Scenario: end-to-end host triage](../51-linux-triage-workflow/README.md) -- shares bulk_extractor within a full host triage workflow.
 
-<!-- cyberlab-enriched: v1 -->
+<!-- cyberlab-enriched: v2 -->
