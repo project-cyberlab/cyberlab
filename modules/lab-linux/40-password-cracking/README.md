@@ -95,7 +95,13 @@ Defenders rarely crack passwords in production, but they must detect the credent
 - **DCSync / replication abuse (T1003.006):** In the Elastic/Kibana logs, hunt Windows Security **Event ID 4662** where `Properties` contains the replication GUIDs `1131f6aa-9c07-11d1-f79f-00c04fc2dcd2` (DS-Replication-Get-Changes) or `1131f6ad-9c07-11d1-f79f-00c04fc2dcd2` (DS-Replication-Get-Changes-All) from a non-DC account. Correlate with **4624** logon for that principal. This maps to impacket `secretsdump.py`'s DRSUAPI path. See [Microsoft Learn: Event 4662](https://learn.microsoft.com/en-us/previous-versions/windows/it-pro/windows-10/security/threat-protection/auditing/event-4662) and MITRE [T1003.006](https://attack.mitre.org/techniques/T1003/006/).
 - **LSASS access (T1003.001):** hunt **Sysmon Event ID 10** (ProcessAccess) where `TargetImage` ends in `lsass.exe` with suspicious `GrantedAccess` (e.g. `0x1410`/`0x1010`) — the classic mimikatz/procdump signature. See MITRE [T1003.001](https://attack.mitre.org/techniques/T1003/001/) and [Sysmon docs on Microsoft Learn](https://learn.microsoft.com/en-us/sysinternals/downloads/sysmon).
 - **NTDS.dit / SAM extraction (T1003.002 / T1003.003):** watch for **Event ID 4688/1** command lines invoking `ntdsutil`, `vssadmin create shadow`, or `reg save hklm\sam`. Volume Shadow Copy creation (**Event ID 8222** / VSS) is a strong precursor signal.
+- **LSA Secrets extraction (T1003.004):** monitor for **Event ID 4688** where `Image` is `reg.exe` and `CommandLine` contains `save hklm\security` or `save hklm\system` (to extract LSA secrets via registry). Also detect `secretsdump.py` usage via `python.exe` command lines containing `secretsdump`. See MITRE [T1003.004](https://attack.mitre.org/techniques/T1003/004/).
+- **Process Discovery (T1057):** hunt **Sysmon Event ID 1** (Process Create) where `Image` is in (`tasklist.exe`, `qprocess.exe`, `wmic.exe`, `processhacker.exe`) or `CommandLine` contains `tasklist`, `qprocess *`, `wmic process list`, `net view` to identify adversary enumerating processes for LSASS targeting. See MITRE [T1057](https://attack.mitre.org/techniques/T1057/).
 - **Network pivots in Security Onion:** Zeek `smb_files.log` / `smb_mapping.log` showing access to `ADMIN$`/`C$` and named pipes (`\srvsvc`, `\samr`, `\drsuapi`) map to remote dumping. Suricata rules in the ET ruleset alert on Responder/LLMNR-NBNS poisoning and impacket signatures — pivot from a Suricata `alert` in Kibana to the corresponding Zeek `conn.log`/`notice.log`. See [Security Onion docs](https://docs.securityonion.net/) and [Zeek SMB logs](https://docs.zeek.org/en/master/logs/smb.html).
+- **Threat-hunting pivots:** After detecting LSASS access (Event ID 10), hunt for:
+    * Unusual outbound connections (Zeek `conn.log` with `service`=- and unusual `duration`/`orig_bytes` ratios)
+    * Creation of suspicious files in `%TEMP%` or `%APP_DATA%` (Zeek `files.log` with `mime_type`=`application/x-dosexec` and unusual file names)
+    * Anomalous privileged logons (Windows Event ID 4624 with `Logon Type`=4 (batch) or 5 (service) from unexpected sources)
 
 Because the crack runs offline, the network is quiet during it — so the investigative pivot is always the *dump* event. Correlate host EDR/Sysmon alerts for hive/LSASS access against the timeline, then assume any dumped hash is now recoverable and force credential resets (T1078 follow-on). Analysts also run John/hashcat defensively to audit their own password-policy strength against recovered hashes.
 
@@ -106,9 +112,13 @@ An attacker uses John and hashcat *after* a foothold and credential dump — fro
 - **Sourcing the hashes:**
   - `reg save HKLM\SAM` + `HKLM\SYSTEM`, or `impacket-secretsdump` local/remote — leaves **4688/Sysmon 1** command-line and, remotely, SMB admin-share + `\samr`/`\drsuapi` pipe access (T1003.002/.003/.006).
   - `ntdsutil "ac i ntds" "ifm" ...` or `vssadmin create shadow` to copy a locked `ntds.dit` — leaves **VSS creation events** and disk artifacts (T1003.003).
+  - **LSA Secrets extraction via registry (T1003.004):** using `reg save hklm\security` or `impacket-secretsdump -samples` leaves **Event ID 4688** with `reg.exe` command lines and creates `SECURITY.hive` files in temp directories.
   - **Responder / LLMNR-NBNS poisoning** to capture NetNTLMv2, then hashcat `-m 5600` — leaves poisoned-name responses observable on the wire (T1557.001, [MITRE T1557.001](https://attack.mitre.org/techniques/T1557/001/)); hashcat mode 5600 = NetNTLMv2 per [hashcat example hashes](https://hashcat.net/wiki/doku.php?id=example_hashes).
-- **Post-crack use (T1078 Valid Accounts):** recovered plaintext enables lateral movement, privilege escalation, and persistence with legitimate credentials — surfacing as anomalous logons (4624/4648) at odd hours or from new hosts.
-- **Evasion:** cracking offline avoids account-lockout and auth-log noise entirely; attackers also clear the security log (T1070.001), stage dumps in ADS or temp paths, and time-throttle logons with cracked creds to blend in. See MITRE [T1070.001](https://attack.mitre.org/techniques/T1070/001/).
+- **Process Discovery (T1057):** attackers run `tasklist`, `qprocess *`, or `wmic process list` to identify lsass.exe PID before opening a handle — leaves **Sysmon Event ID 1** with these command lines and **Event ID 10** shortly after.
+- **Post-crack use (T1078 Valid Accounts):** recovered plaintext enables lateral movement, privilege escalation, and persistence with legitimate credentials — surfacing as anomalous logons (4624/4648) at odd hours or from new hosts. Look for:
+    * Logons to domain controllers from non-DC hosts (Event ID 4624 with `Logon Type`=3 and `TargetUserName`=krbtgt)
+    * New service installations (Event ID 4697) using recovered credentials
+- **Evasion:** cracking offline avoids account-lockout and auth-log noise entirely; attackers also clear the security log (T1070.001), stage dumps in ADS or temp paths (look for `ADS:` in Sysmon Event ID 11 file creation), and time-throttle logons with cracked creds to blend in. See MITRE [T1070.001](https://attack.mitre.org/techniques/T1070/001/).
 
 ## Answer key
 - Hash type: raw MD5 (John `--format=raw-md5`, hashcat `-m 0`).
@@ -132,7 +142,8 @@ sha256sum exercise/hash.txt
 
 ## MITRE ATT&CK & DFIR phase
 - **T1110.002** — Brute Force: Password Cracking (offline). https://attack.mitre.org/techniques/T1110/002/
-- **T1003** — OS Credential Dumping (the precursor that supplies the hashes), with sub-techniques **T1003.001** (LSASS), **T1003.002** (SAM), **T1003.003** (NTDS), **T1003.006** (DCSync). https://attack.mitre.org/techniques/T1003/
+- **T1003** — OS Credential Dumping (the precursor that supplies the hashes), with sub-techniques **T1003.001** (LSASS), **T1003.002** (SAM), **T1003.003** (NTDS), **T1003.004** (LSA Secrets), **T1003.006** (DCSync). https://attack.mitre.org/techniques/T1003/
+- **T1057** — Process Discovery (enumerating processes to target LSASS). https://attack.mitre.org/techniques/T1057/
 - **T1557.001** — Adversary-in-the-Middle: LLMNR/NBT-NS Poisoning (NetNTLMv2 capture feeding cracking). https://attack.mitre.org/techniques/T1557/001/
 - **T1078** — Valid Accounts (post-crack use of recovered credentials). https://attack.mitre.org/techniques/T1078/
 - **T1070.001** — Indicator Removal: Clear Windows Event Logs (evasion). https://attack.mitre.org/techniques/T1070/001/
@@ -153,19 +164,27 @@ Claim → source mapping (all URLs are real, authoritative pages):
 - Kali packaging of `hashcat` and rules under `/usr/share/hashcat/rules/` — [kali.org/tools/hashcat](https://www.kali.org/tools/hashcat/)
 - Windows Event 4662 (replication GUIDs / DCSync) — [Microsoft Learn: Event 4662](https://learn.microsoft.com/en-us/previous-versions/windows/it-pro/windows-10/security/threat-protection/auditing/event-4662)
 - Sysmon (Event ID 10 ProcessAccess, Event ID 1 process create) — [Microsoft Learn: Sysmon](https://learn.microsoft.com/en-us/sysinternals/downloads/sysmon)
+- Windows Event 4688 (process creation with command line) — [Microsoft Learn: Event 4688](https://learn.microsoft.com/en-us/windows/security/threat-protection/auditing/event-4688)
+- Windows Event 8222 (Volume Shadow Copy Service) — [Microsoft Learn: Event 8222](https://learn.microsoft.com/en-us/windows/win32/vss/event-8222)
 - MITRE ATT&CK T1110.002 Password Cracking — [attack.mitre.org/techniques/T1110/002/](https://attack.mitre.org/techniques/T1110/002/)
-- MITRE ATT&CK T1003 OS Credential Dumping (+ .001/.002/.003/.006) — [attack.mitre.org/techniques/T1003/](https://attack.mitre.org/techniques/T1003/)
+- MITRE ATT&CK T1003 OS Credential Dumping (+ .001/.002/.003/.004/.006) — [attack.mitre.org/techniques/T1003/](https://attack.mitre.org/techniques/T1003/)
+- MITRE ATT&CK T1057 Process Discovery — [attack.mitre.org/techniques/T1057/](https://attack.mitre.org/techniques/T1057/)
 - MITRE ATT&CK T1557.001 LLMNR/NBT-NS Poisoning — [attack.mitre.org/techniques/T1557/001/](https://attack.mitre.org/techniques/T1557/001/)
 - MITRE ATT&CK T1078 Valid Accounts — [attack.mitre.org/techniques/T1078/](https://attack.mitre.org/techniques/T1078/)
 - MITRE ATT&CK T1070.001 Clear Windows Event Logs — [attack.mitre.org/techniques/T1070/001/](https://attack.mitre.org/techniques/T1070/001/)
 - Security Onion documentation (Suricata/Zeek/Elastic pivots) — [docs.securityonion.net](https://docs.securityonion.net/)
 - Zeek SMB logs (smb_files.log / smb_mapping.log) — [docs.zeek.org SMB logs](https://docs.zeek.org/en/master/logs/smb.html)
+- Zeek conn.log fields (service, duration, orig_bytes) — [docs.zeek.org conn.log](https://docs.zeek.org/en/master/logs/conn.html)
+- Zeek files.log (mime_type) — [docs.zeek.org files.log](https://docs.zeek.org/en/master/logs/files.html)
 - SANS DFIR blog & posters (credential access / cracking guidance) — [sans.org/blog](https://www.sans.org/blog/)
+- MITRE ATT&CK T1003.004 LSA Secrets — [attack.mitre.org/techniques/T1003/004/](https://attack.mitre.org/techniques/T1003/004/)
+- Microsoft Windows Registry hive backup via reg save — [learn.microsoft.com/windows-server/administration/windows-commands/reg-save](https://learn.microsoft.com/windows-server/administration/windows-commands/reg-save)
+- Impacket secretsdump usage — [github.com/SecureAuthCorp/impacket/blob/master/examples/secretsdump.py](https://github.com/SecureAuthCorp/impacket/blob/master/examples/secretsdump.py)
 
 ## Related modules
-- [Offensive / network (Kali subset)](../11-offensive-kali/README.md) -- shares hashcat for the offensive-side cracking workflow.
-- [Volatility 3 deep-dive (memory plugins & workflow)](../20-volatility-deep/README.md) -- same learning path (Deep-dives); recover credential material from memory to feed cracking.
-- [YARA rule authoring & threat hunting](../21-yara-authoring/README.md) -- same learning path (Deep-dives); hunt the dumping tools that precede offline cracking.
-- [The Sleuth Kit command mastery](../22-sleuthkit-mastery/README.md) -- same learning path (Deep-dives); carve SAM/NTDS artifacts from disk images.
+- [Offensive / network (Kali subset)](../11-offensive-kali/README.md) -- shares hashcat
+- [Volatility 3 deep-dive (memory plugins & workflow)](../20-volatility-deep/README.md) -- same learning path (Deep-dives)
+- [YARA rule authoring & threat hunting](../21-yara-authoring/README.md) -- same learning path (Deep-dives)
+- [The Sleuth Kit command mastery](../22-sleuthkit-mastery/README.md) -- same learning path (Deep-dives)
 
-<!-- cyberlab-enriched: v1 -->
+<!-- cyberlab-enriched: v2 -->
