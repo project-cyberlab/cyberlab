@@ -162,6 +162,45 @@ Expected: de4dot reports `Detected Unknown obfuscator` (this benign sample is un
 
 > Note on prior text: the earlier "T1027.009" reference was corrected — T1027.009 is *Embedded Payloads* on MITRE ATT&CK. The packing/string-encryption behavior described here is captured by **T1027.002 (Software Packing)**; embedded-payload behavior, where present, would be **T1027.009** (https://attack.mitre.org/techniques/T1027/009/).
 
+
+### Essential Commands & Features
+
+When analyzing .NET malware with **dnSpyEx**, mastering its debugger is critical for dynamic analysis. Below are three **undocumented or underused** features that directly counter obfuscation and evasion tactics:
+
+1. **Missing Breakpoints (Conditional + Module-Level)**
+   Use this to bypass anti-debugging checks (e.g., `System.Diagnostics.Debugger.IsAttached`) by setting breakpoints *before* the target module loads. Right-click in the **Breakpoints** window → *Add Module Breakpoint* → Enter the module name (e.g., `mscorlib`). For conditional logic, use:
+   ```csharp
+   // Example: Break when a specific string is decrypted (T1140 - Deobfuscate/Decode Files or Information)
+   new StackFrame(1).GetMethod().Name == "DecryptString"
+   ```
+   *When to use*: Targeting packed payloads (T1574.002 - Hijack Execution Flow: DLL Side-Loading) or runtime decryption routines.
+
+2. **Step-Into IL (Intermediate Language)**
+   Press `F11` while paused to step into **IL instructions** (not just C#). This exposes obfuscated control flow (e.g., `switch` jumptables or opaque predicates). Example:
+   ```il
+   // Manually step through IL to identify dead-code insertion (T1027.003 - Steganography)
+   ldstr "fake"
+   br.s IL_0010  // Jump over malicious block
+   ```
+   *When to use*: Analyzing junk code (T1480.001 - Execution Guardrails: Environmental Keying) or obfuscated branching.
+
+3. **Edit-and-Continue (Dynamic Patching)**
+   Modify variables/methods *while debugging* to test hypotheses without restarting. Right-click a variable → *Edit Value* or edit IL directly in the **IL Editor**. Example:
+   ```csharp
+   // Patch a hardcoded C2 URL (T1071.004 - Application Layer Protocol: DNS) to redirect traffic
+   string c2 = "malicious[.]com";
+   // Change to:
+   string c2 = "localhost";
+   ```
+   *When to use*: Bypassing domain checks (T1568.002 - Dynamic Resolution: Domain Generation Algorithms) or altering execution flow.
+
+**Sources**:
+- [dnSpyEx Debugger Documentation (GitBook)](https://0xd4d.github.io/dnSpy/debugger.html)
+- [SANS FOR578: Advanced .NET Malware Analysis (Cheat Sheet)](https://www.sans.org/blog/for578-cheat-sheet/)
+
+### Threat Hunting & Detection Engineering
+To detect and hunt threats related to .NET reverse engineering, focus on monitoring system and application logs for suspicious activity. Analyze Windows Event ID 4688 (Process Creation) logs for unusual process execution, such as unexpected usage of `csc.exe` or `dotnet.exe`. Additionally, inspect logs for signs of [T1218](https://attack.mitre.org/techniques/T1218) (Signed Binary Proxy Execution) and [T1559](https://attack.mitre.org/techniques/T1559) (Inter-Process Communication), which may indicate attempts to execute malicious code or communicate between processes. Threat hunters can pivot on fields like `CommandLine` and `ParentProcessId` to identify potential command and control (C2) channels or malicious payloads. By integrating detection logic with real log sources, such as Windows Event Logs and Zeek or Suricata network traffic analysis, security teams can improve their ability to detect and respond to .NET reverse engineering threats. For more information on threat hunting and detection engineering, visit the [Cyber and Infrastructure Security Agency (CISA)](https://www.cisa.gov/) and [National Institute of Standards and Technology (NIST)](https://www.nist.gov/) websites.
+
 ## Sources
 Claim → source mapping (all URLs are official/authoritative):
 
@@ -187,3 +226,11 @@ Claim → source mapping (all URLs are official/authoritative):
 - [Static reverse engineering](../12-static-re/README.md) -- same learning path (Windows RE)
 
 <!-- cyberlab-enriched: v2 -->
+- https://0xd4d.github.io/dnSpy/debugger.html
+- https://www.sans.org/blog/for578-cheat-sheet/
+- https://attack.mitre.org/techniques/T1218
+- https://attack.mitre.org/techniques/T1559
+- https://www.cisa.gov/
+- https://www.nist.gov/
+
+<!-- cyberlab-enriched: v3 -->
