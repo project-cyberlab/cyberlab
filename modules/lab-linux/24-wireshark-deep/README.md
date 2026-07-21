@@ -221,6 +221,70 @@ To evade detection, attackers often **fragment or encrypt exfiltrated data** bef
 - [MITRE ATT&CK: Network Sniffing (T1040)](https://attack.mitre.org/techniques/T1040/)
 - [FireEye: Red Team Techniques for Evasion](https://www.fireeye.com/blog/threat-research/2021/04/red-team-techniques-for-evasion.html)
 
+
+### Essential Commands & Features
+
+While the GUI provides interactive analysis, `tshark` exposes critical CLI capabilities that enable automation and precise extraction. Master these five commands to operationalize packet analysis beyond simple capture.
+
+- **`-Y` (Read Filter)**: Applies a display filter at read time, discarding non-matching packets.  
+  *Example*: `tshark -Y "http.request" -r capture.pcap` isolates only HTTP requests.  
+  *Use case*: Rapidly reduce a large capture to relevant traffic without intermediate files.
+
+- **`-w` (Write Pcap)**: Saves filtered output to a new pcap file.  
+  *Example*: `tshark -r capture.pcap -Y "tcp.port==443" -w https_traffic.pcap` creates a subset pcap.  
+  *Use case*: Share or process only suspicious streams while preserving original data.
+
+- **`-z` (Statistics)**: Generates summary statistics. Combine with `io,phs` for protocol hierarchy or `conv,tcp` for conversations.  
+  *Example*: `tshark -r capture.pcap -z io,phs` quickly exposes dominant protocols.  
+  *Use case*: Initial triage to identify unusual or unauthorized protocols (e.g., unexpected ICMP tunneling).
+
+- **`-E` (Output Formatting)**: Used with `-T fields` to control CSV, tab, or quoted output.  
+  *Example*: `tshark -r capture.pcap -T fields -E separator=, -e ip.src -e http.host -e http.request.uri` exports source IP, host, and URI.  
+  *Use case*: Feed extracted indicators into SIEM or threat intelligence pipelines.
+
+- **Follow Stream (`-z follow,tcp,ascii,<stream_index>`)**: Reassembles and prints the application‑layer payload of a TCP stream.  
+  *Example*: `tshark -r capture.pcap -z follow,tcp,ascii,0` shows the first stream’s content.  
+  *Use case*: Reveal credential stuffing, command injection, or data exfiltration in plaintext.
+
+These capabilities directly support detection of **T1071.002 – Web Protocols** (e.g., tunneling C2 over HTTP) and **T1190 – Exploit Public-Facing Application** (e.g., probing for SQLi or RCE in HTTP payloads). For official reference, see the `tshark` man page (<https://www.wireshark.org/docs/man-pages/tshark.html>) and SANS’s tshark filtering guide (<https://www.sans.org/blog/using-tshark-to-filter-and-analyze-packet-captures/>).
+
+### Detection Signatures & Reference Artifacts
+
+```yara
+rule LabNetworkSniff_Sample
+{
+    meta:
+        description = "Detects a benign educational pcap sample used in Wireshark deep analysis training"
+        author = "Training Module"
+        reference = "https://attack.mitre.org/techniques/T1049/"
+    strings:
+        $s1 = "GET /lab-sample" ascii
+        $s2 = { 48 54 54 50 2f 31 2e 31 } // "HTTP/1.1" hex
+    condition:
+        filesize < 10MB and any of them
+}
+```
+
+```yaml
+title: Benign Lab Sample - Wireshark Deep Analysis
+id: 9b3b1e6d-2a4f-4a8c-9c1d-5e7f8a9b0c1d
+logsource:
+    category: network
+    product: zeek
+detection:
+    selection:
+        http.uri|contains: '/lab-sample'
+    condition: selection
+```
+
+| **Type**       | **Indicator**                                                                 |
+|----------------|-------------------------------------------------------------------------------|
+| SHA256 hash    | `e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855` (example) |
+| Filename       | `deep_packet_capture.pcap`                                                    |
+| Network        | `192.0.2.10` (source IP), `203.0.113.5` (destination IP)                     |
+| Artifacts      | URI: `hxxp://192[.]0[.]2[.]1/lab-sample` (defanged)                          |
+| MITRE ATT&CK   | **T1049 - System Network Connections Discovery** (authoritative: https://attack.mitre.org/techniques/T1049/) |
+
 ## Sources
 Claim → source mapping (all URLs are official/authoritative):
 
@@ -259,3 +323,9 @@ Claim → source mapping (all URLs are official/authoritative):
 - https://www.fireeye.com/blog/threat-research/2021/04/red-team-techniques-for-evasion.html
 
 <!-- cyberlab-enriched: v4 -->
+- https://www.wireshark.org/docs/man-pages/tshark.html>
+- https://www.sans.org/blog/using-tshark-to-filter-and-analyze-packet-captures/>
+- https://attack.mitre.org/techniques/T1049/"
+- https://attack.mitre.org/techniques/T1049/
+
+<!-- cyberlab-enriched: v5 -->
