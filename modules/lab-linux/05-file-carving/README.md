@@ -184,6 +184,44 @@ When carving files with **foremost** and **scalpel**, mastering advanced flags u
 ### Threat Hunting & Detection Engineering
 To detect file carving techniques, threat hunters can monitor Windows Event ID 4663, which logs file deletion events, and look for suspicious patterns such as multiple deletions of small files in a short timeframe. Additionally, analyzing Zeek's `http` log for unusual HTTP request patterns, such as multiple requests for small files or files with unusual extensions, can help identify potential file carving activity. This technique is related to [T1218](https://attack.mitre.org/techniques/T1218) - Signed Binary Proxy Execution and [T1222](https://attack.mitre.org/techniques/T1222) - File and Directory Permissions Modification. Threat hunters can pivot on these findings by investigating related logs, such as Windows Event ID 4657, which logs file permission changes, and looking for other indicators of malicious activity. For more information on threat hunting and detection engineering, see the [Cybersecurity and Infrastructure Security Agency (CISA) website](https://www.cisa.gov/) and the [National Institute of Standards and Technology (NIST) Special Publication 800-53](https://nvlpubs.nist.gov/nistpubs/SpecialPublications/NIST.SP.800-53r5.pdf).
 
+
+### Essential Commands & Features
+
+Foremost and Scalpel offer powerful, undocumented or under-documented features that can significantly enhance file carving efficiency during incident response. Below are the most useful commands and flags not yet covered, with concrete examples and tactical use cases.
+
+#### **Foremost: Custom File Types (`-t`) and Timestamping (`-T`)**
+- **`-t <type>`**: Carve for custom file signatures not in the default configuration. Useful when adversaries embed data in non-standard formats (e.g., **T1027.002 Obfuscated Files or Information: Software Packing**).
+  ```bash
+  foremost -t png,jpg -i evidence.dd -o /cases/recovered
+  ```
+  *When to use*: Suspected steganography or custom malware payloads (e.g., embedded in `.dat` files).
+
+- **`-T`**: Append timestamps to output directories to avoid overwriting during iterative analysis (e.g., **T1560.002 Archive Collected Data: Archive via Library**).
+  ```bash
+  foremost -T -i /dev/sdb1 -o /cases/evidence_$(date +%Y%m%d_%H%M%S)
+  ```
+  *When to use*: Multi-session investigations or automated scripts.
+
+#### **Scalpel: Batch Mode (`-b`) and Output Override (`-o`)**
+- **`-b`**: Process multiple input files in batch mode without user interaction. Critical for large-scale forensic triage (e.g., **T1113 Screen Capture**).
+  ```bash
+  scalpel -b -c /etc/scalpel.conf -o /cases/batch_recovered *.dd
+  ```
+  *When to use*: Bulk processing of disk images or memory dumps.
+
+- **`-o <dir>`**: Override the default output directory (Scalpel’s `-o` behaves differently than Foremost’s; it *must* exist beforehand).
+  ```bash
+  mkdir -p /cases/scalpel_out && scalpel -o /cases/scalpel_out -i evidence.dd
+  ```
+  *When to use*: Isolating results for chain-of-custody or tool-specific workflows.
+
+**Authoritative Sources**:
+- [Foremost Man Page (Digital Corpora)](https://digitalcorpora.org/docs/foremost.html)
+- [Scalpel GitHub Wiki (GitHub)](https://github.com/sleuthkit/scalpel/wiki)
+
+### Adversary Emulation & Red-Team Perspective
+From an adversary's perspective, file carving can be used to recover sensitive information from compromised systems, such as encrypted files or deleted data. Attackers may employ techniques like [T1552](https://attack.mitre.org/techniques/T1552) - "Unsecured Credentials: Credentials In Files" to search for unsecured credentials within carved files. Additionally, [T1530](https://attack.mitre.org/techniques/T1530) - "Data from Local System" can be used to gather data from local systems, including carved files. When using file carving for malicious purposes, attackers may attempt to evade detection by modifying file system timestamps or using code obfuscation techniques. Artifacts left behind by file carving activities may include temporary files, log entries, or altered file system metadata. To stay ahead of these threats, security professionals should familiarize themselves with the latest adversary tactics, techniques, and procedures (TTPs). For more information on file carving and digital forensics, visit the [National Institute of Standards and Technology (NIST)](https://www.nist.gov/itl/ssd/software-quality-group) or the [Cybersecurity and Infrastructure Security Agency (CISA)](https://us-cert.cisa.gov/) websites.
+
 ## Sources
 Claim → source mapping (all URLs are official/authoritative):
 
@@ -229,3 +267,11 @@ Claim → source mapping (all URLs are official/authoritative):
 - https://nvlpubs.nist.gov/nistpubs/SpecialPublications/NIST.SP.800-53r5.pdf
 
 <!-- cyberlab-enriched: v3 -->
+- https://digitalcorpora.org/docs/foremost.html
+- https://github.com/sleuthkit/scalpel/wiki
+- https://attack.mitre.org/techniques/T1552
+- https://attack.mitre.org/techniques/T1530
+- https://www.nist.gov/itl/ssd/software-quality-group
+- https://us-cert.cisa.gov/
+
+<!-- cyberlab-enriched: v4 -->
