@@ -140,6 +140,27 @@ Sample sha256: reproduce with the generator's `sha256sum intrusion_bodyfile.txt`
 - **T1091** — Replication Through Removable Media / device history (RegRipper `usbstor`) — https://attack.mitre.org/techniques/T1091/
 - **DFIR phase:** Examination and Analysis (timeline reconstruction / correlation) following Identification.
 
+
+### Threat Hunting & Detection Engineering
+
+Once the 49-intrusion timeline is reconstructed, pivot to **proactive threat hunting** and **detection engineering** to identify similar adversary tradecraft. Focus on **T1059.001 (Command and Scripting Interpreter: PowerShell)** and **T1134.002 (Access Token Manipulation: Create Process with Token)**—two techniques frequently observed in post-exploitation phases.
+
+**Detection Logic:**
+- **PowerShell Script Block Logging (Event ID 4104)** in Windows Event Logs (`Microsoft-Windows-PowerShell/Operational`) captures deobfuscated commands. Hunt for encoded commands (`-EncodedCommand`) or suspicious cmdlets like `Invoke-WebRequest -Uri <C2_URL>`. Pivot on `ScriptBlockText` fields containing base64 strings or unusual parameter combinations (e.g., `-NoProfile -ExecutionPolicy Bypass`).
+- **Process Creation Events (Event ID 4688)** with `TokenElevationType` set to `%%1936` (TokenElevationTypeFull) may indicate **T1134.002** if the parent process (e.g., `lsass.exe`) is unexpected. Correlate with **Event ID 4672** (Special Privileges Assigned) to identify token theft attempts.
+- **Zeek/Suricata:** Hunt for **HTTP requests to uncommon URIs** (e.g., `/admin/get.php`) with `user_agent` fields mimicking legitimate tools (e.g., `Mozilla/5.0 (Windows NT)`). Use Zeek’s `http.log` to pivot on `status_code=200` responses with small payloads (e.g., `<1KB`), a hallmark of C2 beaconing.
+
+**Threat-Hunting Pivots:**
+- **Sysmon Event ID 10 (Process Access)** targeting `lsass.exe` with `GrantedAccess` values like `0x1438` (read/write memory) or `0x1410` (query information).
+- **Suricata’s `fileinfo` log** for executables downloaded via HTTP with mismatched MIME types (e.g., `.jpg` extension but `PE32` magic bytes).
+
+**Sources:**
+- [CISA Alert AA23-347A: Threat Hunting for PowerShell Abuse](https://www.cisa.gov/news-events/cybersecurity-advisories/aa23-347a)
+- [MITRE ATT&CK: Access Token Manipulation (T1134)](https://attack.mitre.org/techniques/T1134/)
+
+### Adversary Emulation & Red-Team Perspective
+To effectively emulate an adversary in the context of the 49-intrusion-timeline-case, consider the tactics, techniques, and procedures (TTPs) involved in exploiting system vulnerabilities. An attacker may utilize techniques such as [T1204](https://attack.mitre.org/techniques/T1204) - "User Execution" to trick users into executing malicious code, or [T1550](https://attack.mitre.org/techniques/T1550) - "Use Alternate Authentication Material" to gain unauthorized access using alternate authentication materials. These techniques can leave behind artifacts such as suspicious login activity, unusual network traffic, or modified system files. To evade detection, attackers may employ evasion techniques like code obfuscation or anti-forensic tools to conceal their activities. Understanding these TTPs and the resulting artifacts is crucial for developing effective detection and response strategies. For more information on adversary emulation and red teaming, visit the [Cyber and Infrastructure Security Agency (CISA)](https://www.cisa.gov/) website or the [National Institute of Standards and Technology (NIST)](https://www.nist.gov/) cybersecurity framework documentation.
+
 ## Sources
 Claim → source mapping (all URLs are real, authoritative pages):
 
@@ -183,3 +204,11 @@ Claim → source mapping (all URLs are real, authoritative pages):
 - [Registry analysis](../04-registry-analysis/README.md) -- shares RegRipper for deeper hive parsing.
 
 <!-- cyberlab-enriched: v1 -->
+- https://www.cisa.gov/news-events/cybersecurity-advisories/aa23-347a
+- https://attack.mitre.org/techniques/T1134/
+- https://attack.mitre.org/techniques/T1204
+- https://attack.mitre.org/techniques/T1550
+- https://www.cisa.gov/
+- https://www.nist.gov/
+
+<!-- cyberlab-enriched: v2 -->
