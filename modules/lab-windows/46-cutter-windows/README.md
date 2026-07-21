@@ -182,6 +182,65 @@ Common mistakes when using Cutter for Windows malware analysis include misclassi
 - CISA Malware Analysis in an Enterprise Environment: https://www.cisa.gov/resources-tools/resources/malware-analysis-enterprise-environment  
 - Australian Cyber Security Centre (ACSC) Malware Analysis Guide: https://www.cyber.gov.au/acsc/view-all-content/publications/malware-analysis-guide
 
+
+```markdown
+### Essential Commands & Features
+
+Cutter provides powerful, yet often underutilized, commands for deep binary analysis. Below are the most useful features not yet demonstrated, with concrete examples and their tactical applications:
+
+1. **Function Cross-References (XREFs)**
+   Use `x` in the disassembly view or the **XREFs** panel to trace how functions are called. This is critical for uncovering **T1132.001 (Data Encoding: Standard Encoding)** obfuscation layers or **T1553.002 (Subvert Trust Controls: Code Signing)** tampering.
+   ```bash
+   # In Cutter's console (View → Console), run:
+   [0x00001234]> axt @ sym.encrypt_data
+   ```
+   *When to use*: Identify all callers of a suspicious function (e.g., `CryptEncrypt`) to map data flow.
+
+2. **Decompiler Output Export**
+   Export decompiled C-like pseudocode to analyze offline or share with teams. Right-click a function → **Copy Decompiled Output** or use:
+   ```bash
+   [0x00001234]> pdc @ sym.main > main.c
+   ```
+   *When to use*: Reverse engineer **T1027.002 (Obfuscated Files or Information: Software Packing)** without exposing live malware.
+
+3. **Memory Map Visualization**
+   Inspect the binary’s memory layout via **Windows → Memory Map** or:
+   ```bash
+   [0x00001234]> iS
+   ```
+   *When to use*: Detect **T1055.002 (Process Injection: Portable Executable Injection)** by identifying anomalous memory regions (e.g., `RWX` sections).
+
+4. **Custom Analysis Scripts**
+   Automate repetitive tasks (e.g., string extraction) using Cutter’s Python API. Example script to dump all strings from `.rodata`:
+   ```python
+   import cutter
+   for s in cutter.cmdj("izj"):
+       if ".rodata" in s["section"]:
+           print(s["string"])
+   ```
+   *When to use*: Hunt for **T1106 (Native API)** calls or hardcoded C2 IPs in packed samples.
+
+**Sources**:
+- [Cutter Python API Docs](https://cutter.re/docs/api/python/)
+- [MITRE ATT&CK: T1132.001](https://attack.mitre.org/techniques/T1132/001/)
+```
+
+### Threat Hunting & Detection Engineering
+
+Once **46-cutter-windows** has carved a malicious payload from memory, shift focus to **proactive threat hunting** and **detection engineering** to identify adversaries leveraging similar tradecraft. Two high-value MITRE ATT&CK techniques to prioritize are:
+
+1. **T1036.005 – Masquerading: Match Legitimate Name or Location** (Adversaries may rename malicious binaries to mimic legitimate Windows utilities, e.g., `svchost.exe` in non-standard paths like `C:\PerfLogs\`). Hunt for **Event ID 4688 (Process Creation)** where `NewProcessName` matches a known Windows binary (e.g., `svchost.exe`, `lsass.exe`) but `ProcessCommandLine` contains unusual paths or arguments. Pivot on `ParentProcessName` to identify suspicious spawn chains (e.g., `cmd.exe` or `powershell.exe` launching `svchost.exe`).
+
+2. **T1562.001 – Impair Defenses: Disable or Modify Tools** (Adversaries may disable EDR or logging to evade detection). Monitor **Event ID 1102 (Audit Log Cleared)** and **Event ID 4719 (System Audit Policy Modified)** for unauthorized changes. For network-based detection, use **Zeek’s `conn.log`** to hunt for anomalous outbound connections (e.g., `service == "dns"` with unusually high query volumes to rare domains) or **Suricata’s `alert` logs** for signatures detecting C2 traffic (e.g., beaconing patterns to known-malicious IPs).
+
+**Detection Logic Example**:
+- **Windows Event Logs**: Filter for `EventID=4688` where `NewProcessName LIKE '%svchost.exe'` AND `ProcessCommandLine NOT LIKE '%C:\Windows\System32\%'`.
+- **Zeek**: Correlate `conn.log` entries with `id.orig_h` (internal host) and `duration < 1.0` (short-lived connections) to identify potential C2 beacons.
+
+**Sources**:
+- [CERT-EU: Hunting for Masquerading Techniques (T1036)](https://cert.europa.eu/static/WhitePapers/CERT-EU-SWP_17_001_Masquerading_v1_0.pdf)
+- [FireEye: Detecting Disabling of Security Tools (T1562.001)](https://www.fireeye.com/blog/threat-research/2020/03/suspicious-processes-indicative-of-security-tool-disabling.html)
+
 ## Sources
 Claim → source mapping (all URLs are official/authoritative):
 
@@ -213,3 +272,9 @@ Claim → source mapping (all URLs are official/authoritative):
 - https://www.cyber.gov.au/acsc/view-all-content/publications/malware-analysis-guide
 
 <!-- cyberlab-enriched: v3 -->
+- https://cutter.re/docs/api/python/
+- https://attack.mitre.org/techniques/T1132/001/
+- https://cert.europa.eu/static/WhitePapers/CERT-EU-SWP_17_001_Masquerading_v1_0.pdf
+- https://www.fireeye.com/blog/threat-research/2020/03/suspicious-processes-indicative-of-security-tool-disabling.html
+
+<!-- cyberlab-enriched: v4 -->
