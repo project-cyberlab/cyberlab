@@ -73,27 +73,28 @@ Concrete detection logic and pivots:
 - **Timestomp indicator (T1070.006):** flag files where the `$STANDARD_INFORMATION` (SI) times precede or diverge from `$FILE_NAME` (FN) times, or where MACB shows a "born" time in the past but the MFT sequence number is recent. Plaso surfaces both SI and FN entries via the NTFS `$MFT` parser (https://plaso.readthedocs.io/en/latest/sources/user/Supported-formats.html).
 - **Log clearing (T1070.001):** look for a gap where expected recurring events (logon events, service starts) stop, and for a `winevtx` record indicating the Security event log was cleared (Windows Event ID 1102) — cross-reference the Microsoft Learn documentation for that audit event (https://learn.microsoft.com/en-us/windows/security/threat-protection/auditing/event-1102).
 - **Data staging (T1074):** cluster the timeline by directory and creation time to reveal a burst of files written into a staging path.
-- **Security Onion pivots:** correlate the on-disk timeline against Suricata alerts, Zeek `conn.log`/`http.log`/`files.log` connection and transfer records, and Elastic/Kibana host events (Security Onion analyst tooling documented at https://docs.securityonion.net/en/2.4/analyst-tools.html). Match a Zeek file-download timestamp to the filesystem `filestat` creation time of the dropped artifact to confirm initial access ordering.
+- **Credential dumping (T1003):** detect process access events to `lsass.exe` (Sysmon Event ID 10) or Windows Event ID 4663 (a handle was requested on an object) when the object is `lsass.exe`. In the timeline, look for the creation of a dump file (e.g., `lsass.dmp`) or the presence of Mimikatz-related files (e.g., `mimikatz.exe`, `kiwi.dll`). Plaso's `sysmon` and `winevtx` parsers can surface these events. Filter with `psort.py` using `sourcetype == 'sysmon' AND desc LIKE '%lsass%'` or `filename LIKE '%lsass.dmp%'`.
+- **Impair defenses (T1562):** detect disabling of Windows Defender via registry changes (Event ID 4657 for registry modification to `HKLM\SOFTWARE\Policies\Microsoft\Windows Defender\DisableAntiSpyware = 1`) or by stopping services (`net stop WinDefend`). Plaso's registry parser captures these events. Look for `sourcetype == 'Windows Registry' AND data LIKE '%DisableAntiSpyware%'` or `desc LIKE '%WinDefend%'`.
+- **Threat-hunting pivots:**
+  - **Zeek `conn.log` correlation:** match file download/completion timestamps from Zeek `http.log` (field `ts`) to the `Date` column of a Plaso timeline to identify the initial ingress of a malicious payload. Use the `md5` or `sha1` from Zeek `files.log` to cross-reference with Plaso `filestat` events for that file.
+  - **Suricata DNS alerts:** correlate DNS queries for known-bad domains (Suricata `dns.log` with `dns.type == 'query'`) with file creation times in the timeline to establish a bring-your-own-land (BYOL) tool download chain.
+  - **Elastic/Kibana host events:** pivot from a high-severity Elastic rule (e.g., "Windows Event ID 1102 – Audit Log Cleared") to a Plaso timeline slice covering the same time range to find related file-system events like temporary file drops.
+- **Detection-engineering logic:**
+  - **Event ID 4663 (handle to lsass):** filter on `EventID == 4663` and `ObjectName == '\Device\HarddiskVolume?\Windows\System32\lsass.exe'` and `AccessMask == 0x1FFFFF` (full control). This is a strong indicator of credential dumping and can be mapped to T1003.
+  - **Sysmon Event ID 1 (process creation) for `wbadmin`/`vssadmin`:** detect VSS deletion events (T1490) by filtering on `CommandLine` containing `'wbadmin delete catalog'` or `'vssadmin delete shadows'`. Plaso's `sysmon` parser captures these.
+  - **Registry event for defender disable:** use `EventID == 4657` and `ObjectName == 'HKLM\...\DisableAntiSpyware'` and `NewValue == '0x00000001'` to detect T1562.001.
 
-This maps activity to ATT&CK techniques such as T1070.006 (Timestomp), T1070.001 (Clear logs), and T1074 (Data Staged) by revealing inconsistencies between MACB values.
-
-**Additional detection logic:**
-- **T1119 (Inhibit System Recovery):** Look for events related to the deletion or modification of backup files (e.g., `.bak`, `.old`, `.tmp`) or the presence of `wbadmin` or `vssadmin` commands in the timeline. This can be detected using a `psort.py` filter like: `psort.py -o l2tcsv -w inhibit.csv /tmp/case.plaso "filename LIKE '%.bak%' OR filename LIKE '%.tmp%' OR sourcetype = 'Windows Registry' AND data LIKE '%wbadmin%' OR data LIKE '%vssadmin%'". Plaso's Windows Registry parser (https://plaso.readthedocs.io/en/latest/sources/user/Supported-formats.html) and file parsers can surface these artifacts.
-- **T1059.003 (Command and Scripting Interpreter: PowerShell):** Look for PowerShell script execution or command-line invocations in the timeline. This can be detected by filtering on the `psort.py` command-line parser or by searching for `powershell.exe` in the `filename` or `desc` fields. Example: `psort.py -o l2tcsv -w powershell.csv /tmp/case.plaso "filename = 'powershell.exe' OR desc LIKE '%powershell%'". This is documented in the Plaso output-module reference (https://plaso.readthedocs.io/en/latest/sources/user/Output-and-formatting.html).
-
-This maps activity to ATT&CK technique T1059.003 (Command and Scripting Interpreter: PowerShell) by detecting PowerShell-related artifacts in the timeline.
+These detection strategies map to MITRE ATT&CK techniques T1070.006, T1070.001, T1074, T1003, T1562.001, and T1490.
 
 ## Attacker perspective
 Attackers know timelines betray them, so they attempt anti-forensics. Concrete TTPs, the artifacts they leave, and evasion notes:
 - **Timestomping (T1070.006):** tools like SetMACE, `timestomp`, or a simple `touch -d` set a file's SI timestamps to blend into OS-install dates (technique documented at https://attack.mitre.org/techniques/T1070/006/). Artifact: on NTFS the `$FILE_NAME` attribute timestamps are updated by the kernel and are far harder to forge, so SI-vs-FN divergence and an MFT sequence/record number inconsistent with an "old" born date remain. Evasion attempt: some tools also rewrite FN times via lower-level writes, but nanosecond-precision truncation (SI times ending in zeros) is itself an indicator noted in DFIR guidance (SANS FOR508, https://www.sans.org/cyber-security-courses/advanced-incident-response-threat-hunting/).
 - **Clearing event logs (T1070.001):** `wevtutil cl`, `Clear-EventLog`, or `Remove-Item` on `.evtx` files (https://attack.mitre.org/techniques/T1070/001/). Artifact: Windows writes Event ID 1102 ("The audit log was cleared", https://learn.microsoft.com/en-us/windows/security/threat-protection/auditing/event-1102) and leaves a suspicious gap in the timeline; on Linux, truncated `/var/log` files show reset inode/size timings.
 - **Wiping browser history:** deleting history/cache leaves the SQLite databases with unallocated/freed pages and shifts the file's own MACB times, which Plaso's browser and `filestat` parsers still record.
+- **Credential dumping (T1003):** tools like Mimikatz (`sekurlsa::logonpasswords`), `procdump` on `lsass.exe`, or `comsvcs.dll` Minidump (https://attack.mitre.org/techniques/T1003/). Artifact: creation of a dump file (e.g., `lsass.dmp`), process access events to `lsass.exe` (Sysmon Event ID 10, Windows Event ID 4663 with AccessMask 0x1FFFFF), or presence of Mimikatz modules in memory (detectable by Plaso's prefetch parser if executed). Evasion attempt: attackers use crypters or reflective loading (T1620) to avoid writing Mimikatz to disk. However, Plaso's process-creation events (if Sysmon is enabled) still show the `rundll32.exe` or `powershell.exe` that loaded the dump code.
+- **Impair defenses (T1562.001):** attackers disable Windows Defender via registry (`DisableAntiSpyware = 1`), stop the service (`net stop WinDefend`), or add exclusions (https://attack.mitre.org/techniques/T1562/001/). Artifact: registry modifications captured by Plaso's Registry parser; event log entries for service stop (Event ID 7036). Evasion attempt: attackers may use PowerShell script blocks to execute these changes without writing to disk, but the Windows Event Log still captures the script block (Event ID 4104) if PowerShell logging is enabled.
 
 Ironically these actions leave their own artifacts — Plaso surfaces the divergence between `$STANDARD_INFORMATION` and `$FILE_NAME` MFT timestamps, out-of-order sequence numbers, and files whose filesystem `filestat` time contradicts their content or registry references. An analyst reviewing the super-timeline can spot the impossible ordering (e.g., a file "created" before the OS) that a timestomp introduces, turning the attacker's cover-up into a detection signal.
-
-**Additional TTPs:**
-- **T1119 (Inhibit System Recovery):** Attackers may delete or modify backup files to prevent system recovery. This can be detected by looking for the deletion or modification of `.bak`, `.old`, or `.tmp` files in the timeline. Plaso's file parsers can surface these artifacts, and the presence of `wbadmin` or `vssadmin` commands in the timeline may indicate the use of Windows Volume Shadow Copy Service (VSS) to delete backups.
-- **T1059.003 (Command and Scripting Interpreter: PowerShell):** Attackers may use PowerShell to execute commands or scripts on the system. This can be detected by looking for `powershell.exe` in the timeline or by searching for PowerShell-related commands in the `desc` or `data` fields. Evasion attempt: Attackers may use obfuscation or encoded commands to avoid detection, but Plaso's command-line parser can still surface these artifacts.
 
 ## Answer key
 Sample sha256 (disk.raw): `452d7f45bf0629a795cd413e200631eb3c8fcfef1327d3766014541aabe58c88`
@@ -113,13 +114,15 @@ grep filestat /tmp/timeline.csv | sort -t',' -k1,2 | head -n 1
 Expected findings: the `filestat` parser produces the most events for a raw filesystem sample; the first `filestat` event is the earliest MACB timestamp in the CSV (the topmost row after sorting by date/time). The `mactime` cross-check (`head -n 2 /tmp/mactime.csv`) reports the same earliest timestamp, validating consistency between the Plaso and Sleuth Kit timelines. (The `l2tcsv` column ordering used above is defined in the Plaso output-module reference, https://plaso.readthedocs.io/en/latest/sources/user/Output-and-formatting.html.)
 
 ## MITRE ATT&CK & DFIR phase
+- **T1003** — Credential Dumping (detect via process access to lsass.exe, dump file creation, Mimikatz artifacts). https://attack.mitre.org/techniques/T1003/
 - **T1070.006** — Indicator Removal: Timestomp (detect via MACB / SI-vs-FN inconsistencies in the super-timeline). https://attack.mitre.org/techniques/T1070/006/
 - **T1070.001** — Indicator Removal: Clear Windows Event Logs (gaps or missing log events; Event ID 1102). https://attack.mitre.org/techniques/T1070/001/
 - **T1074** — Data Staged (staging directories revealed by clustered filesystem creation times). https://attack.mitre.org/techniques/T1074/
 - **T1119** — Inhibit System Recovery (deletion or modification of backup files). https://attack.mitre.org/techniques/T1119/
+- **T1490** — Inhibit System Recovery (VSS deletion via wbadmin/vssadmin). https://attack.mitre.org/techniques/T1490/
+- **T1562.001** — Impair Defenses: Disable or Modify Tools (registry disabling of Windows Defender). https://attack.mitre.org/techniques/T1562/001/
 - **T1059.003** — Command and Scripting Interpreter: PowerShell (execution of PowerShell scripts or commands). https://attack.mitre.org/techniques/T1059/003/
 - **DFIR phase:** Examination / Analysis (timeline reconstruction and event correlation).
-
 
 ### Essential Commands & Features
 
@@ -171,25 +174,27 @@ Claim → source mapping (all URLs are authoritative tool/vendor/standards pages
 - The Sleuth Kit — tool docs / man index (version flags): https://www.sleuthkit.org/sleuthkit/docs.php ; https://www.sleuthkit.org/sleuthkit/man/
 - Kali Tools — Sleuth Kit package: https://www.kali.org/tools/sleuthkit/
 - Microsoft Learn — Event 1102 "The audit log was cleared": https://learn.microsoft.com/en-us/windows/security/threat-protection/auditing/event-1102
+- Microsoft Learn — Event 4663 "An attempt was made to access an object": https://learn.microsoft.com/en-us/windows/security/threat-protection/auditing/event-4663
+- Microsoft Learn — Event 4657 "A registry value was modified": https://learn.microsoft.com/en-us/windows/security/threat-protection/auditing/event-4657
+- Sysmon — Event ID 10 (ProcessAccess) and Event ID 1 (Process creation): https://learn.microsoft.com/en-us/sysinternals/downloads/sysmon
 - Security Onion — analyst tools (Suricata/Zeek/Elastic/Kibana pivots): https://docs.securityonion.net/en/2.4/analyst-tools.html
+- MITRE ATT&CK — T1003 Credential Dumping: https://attack.mitre.org/techniques/T1003/
 - MITRE ATT&CK — T1070.006 Timestomp: https://attack.mitre.org/techniques/T1070/006/
 - MITRE ATT&CK — T1070.001 Clear Windows Event Logs: https://attack.mitre.org/techniques/T1070/001/
 - MITRE ATT&CK — T1074 Data Staged: https://attack.mitre.org/techniques/T1074/
 - MITRE ATT&CK — T1119 Inhibit System Recovery: https://attack.mitre.org/techniques/T1119/
+- MITRE ATT&CK — T1490 Inhibit System Recovery (VSS deletes): https://attack.mitre.org/techniques/T1490/
+- MITRE ATT&CK — T1562.001 Impair Defenses: Disable or Modify Tools: https://attack.mitre.org/techniques/T1562/001/
 - MITRE ATT&CK — T1059.003 Command and Scripting Interpreter: PowerShell: https://attack.mitre.org/techniques/T1059/003/
+- MITRE ATT&CK — T1482 Domain Trust Discovery: https://attack.mitre.org/techniques/T1482/
+- MITRE ATT&CK — T1622 Debugger Evasion: https://attack.mitre.org/techniques/T1622/
+- CybOK: https://www.cybok.org/
+- NIST Special Publication 800-150: https://nvlpubs.nist.gov/nistpubs/SpecialPublications/NIST.SP.800-150.pdf
 
 ## Related modules
-- [Plaso super-timeline deep-dive](../23-plaso-supertimeline/README.md) -- shares log2timeline as its core engine and goes deeper on parsers/filters.
-- [Scenario: intrusion timeline reconstruction](../49-intrusion-timeline-case/README.md) -- applies plaso super-timelines to a full end-to-end intrusion case.
-- [Disk & filesystem forensics](../01-disk-forensics/README.md) -- same Foundations learning path; supplies the filesystem/`fls` groundwork used here.
-- [Memory forensics](../02-memory-forensics/README.md) -- same Foundations learning path; complements on-disk timelines with volatile-memory artifacts.
+- [Plaso super-timeline deep-dive](../23-plaso-supertimeline/README.md) -- shares log2timeline
+- [Scenario: intrusion timeline reconstruction](../49-intrusion-timeline-case/README.md) -- shares plaso
+- [Disk & filesystem forensics](../01-disk-forensics/README.md) -- same learning path (Foundations)
+- [Memory forensics](../02-memory-forensics/README.md) -- same learning path (Foundations)
 
-<!-- cyberlab-enriched: v2 -->
-- https://plaso.readthedocs.io/en/latest/sources/user/Using-log2timeline.html#specifying-parsers
-- https://www.osdfcon.org/presentations/2021/Elizabeth-Schweinsberg_Plaso-Filtering.pdf
-- https://attack.mitre.org/techniques/T1482
-- https://attack.mitre.org/techniques/T1622
-- https://www.cybok.org/
-- https://nvlpubs.nist.gov/nistpubs/SpecialPublications/NIST.SP.800-150.pdf
-
-<!-- cyberlab-enriched: v3 -->
+<!-- cyberlab-enriched: v4 -->
