@@ -249,6 +249,28 @@ Once you’ve extracted the ransomware’s process hive from memory, pivot to **
 - [MITRE ATT&CK: Process Injection (T1055)](https://attack.mitre.org/techniques/T1055/)
 - [MITRE ATT&CK: Inhibit System Recovery (T1490)](https://attack.mitre.org/techniques/T1490/)
 
+
+### Adversary Emulation & Red-Team Perspective
+
+As part of adversary emulation, the red team deploys the ransomware’s memory-resident components using **T1055.013 – Process Doppelgänging** to evade static detection. This technique leverages the Windows Transactional NTFS (TxF) to create a modified copy of a legitimate executable (e.g., `notepad.exe`), inject the ransomware payload, and roll back the transaction—leaving no trace on disk. Memory artifacts include a process with a mismatched PEB (Process Environment Block): the original image name appears legitimate, but the process’s memory sections contain the encrypted payload and hollowed-out regions. Additionally, **T1134.004 – Parent PID Spoofing** is used to spawn the ransomware process under a trusted parent like `explorer.exe` or `svchost.exe`, bypassing process ancestry heuristics. This spoofing leaves an artifact in the EPROCESS block’s `InheritedFromUniqueProcessId` field, which can be recovered via memory forensics. Evasion considerations include avoiding user-mode API hooks by using direct syscalls (e.g., Hell’s Gate / Halo’s Gate) and disabling ETW (Event Tracing for Windows) to prevent telemetry. The red team also clears the VAD (Virtual Address Descriptor) using “dead drop” injection to hinder memory scanning. These emulated techniques mirror real-world ransomware operations and leave distinct forensic footprints for blue team analysis.
+
+**Sources**:
+- CrowdStrike on Process Doppelgänging: https://www.crowdstrike.com/blog/process-doppelanging-a-new-way-to-impersonate-processes/
+- Mandiant on Parent PID Spoofing: https://www.mandiant.com/resources/blog/tracking-parent-pid-spoofing
+
+### Common Pitfalls & Result Validation
+
+Analysts often misinterpret ransomware memory artifacts due to **over-reliance on single indicators** or **ignoring process context**. A frequent mistake is assuming all suspicious strings (e.g., `.locked` extensions) confirm ransomware—these may stem from benign file operations or unrelated malware (e.g., **T1037.004: Boot or Logon Initialization Scripts**). Validate findings by cross-referencing process trees, loaded modules, and network connections (e.g., **T1071.004: DNS Application Layer Protocol**). For example, if `cmd.exe` spawns `vssadmin.exe` to delete shadow copies, check parent processes for signs of **T1491.001: Internal Defacement** (e.g., `wmic` or PowerShell invocations).
+
+False positives arise when analysts conflate **legitimate encryption tools** (e.g., BitLocker) with ransomware. To avoid this, verify:
+1. **Process injection** (e.g., **T1055.002: Portable Executable Injection**) via `malfind` or `dlllist` in Volatility.
+2. **Unusual child processes** (e.g., `notepad.exe` spawning `certutil.exe`).
+3. **Memory-resident payloads** by checking for hollowed processes or anomalous memory sections.
+
+Always correlate memory artifacts with disk/registry evidence (e.g., `UserAssist` keys for executed binaries). For authoritative validation, consult:
+- [CERT-EU’s ransomware memory forensics guide](https://cert.europa.eu/static/WhitePapers/CERT-EU-SWP_17_001_ransomware.pdf)
+- [FireEye’s memory analysis best practices](https://www.fireeye.com/content/dam/fireeye-www/services/pdfs/pf/ms/mandiant-memory-forensics.pdf)
+
 ## Sources
 Claim → source mapping (all URLs are official/authoritative):
 
@@ -341,3 +363,9 @@ Claim → source mapping (all URLs are official/authoritative):
 - [Scenario: end-to-end host triage](../51-linux-triage-workflow/README.md) -- shares bulk_extractor within a full host-triage pipeline, including registry and file system artifact analysis.
 
 <!-- cyberlab-enriched: v3 -->
+- https://www.crowdstrike.com/blog/process-doppelanging-a-new-way-to-impersonate-processes/
+- https://www.mandiant.com/resources/blog/tracking-parent-pid-spoofing
+- https://cert.europa.eu/static/WhitePapers/CERT-EU-SWP_17_001_ransomware.pdf
+- https://www.fireeye.com/content/dam/fireeye-www/services/pdfs/pf/ms/mandiant-memory-forensics.pdf
+
+<!-- cyberlab-enriched: v4 -->
