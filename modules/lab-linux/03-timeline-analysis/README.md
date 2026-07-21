@@ -77,6 +77,12 @@ Concrete detection logic and pivots:
 
 This maps activity to ATT&CK techniques such as T1070.006 (Timestomp), T1070.001 (Clear logs), and T1074 (Data Staged) by revealing inconsistencies between MACB values.
 
+**Additional detection logic:**
+- **T1119 (Inhibit System Recovery):** Look for events related to the deletion or modification of backup files (e.g., `.bak`, `.old`, `.tmp`) or the presence of `wbadmin` or `vssadmin` commands in the timeline. This can be detected using a `psort.py` filter like: `psort.py -o l2tcsv -w inhibit.csv /tmp/case.plaso "filename LIKE '%.bak%' OR filename LIKE '%.tmp%' OR sourcetype = 'Windows Registry' AND data LIKE '%wbadmin%' OR data LIKE '%vssadmin%'". Plaso's Windows Registry parser (https://plaso.readthedocs.io/en/latest/sources/user/Supported-formats.html) and file parsers can surface these artifacts.
+- **T1059.003 (Command and Scripting Interpreter: PowerShell):** Look for PowerShell script execution or command-line invocations in the timeline. This can be detected by filtering on the `psort.py` command-line parser or by searching for `powershell.exe` in the `filename` or `desc` fields. Example: `psort.py -o l2tcsv -w powershell.csv /tmp/case.plaso "filename = 'powershell.exe' OR desc LIKE '%powershell%'". This is documented in the Plaso output-module reference (https://plaso.readthedocs.io/en/latest/sources/user/Output-and-formatting.html).
+
+This maps activity to ATT&CK technique T1059.003 (Command and Scripting Interpreter: PowerShell) by detecting PowerShell-related artifacts in the timeline.
+
 ## Attacker perspective
 Attackers know timelines betray them, so they attempt anti-forensics. Concrete TTPs, the artifacts they leave, and evasion notes:
 - **Timestomping (T1070.006):** tools like SetMACE, `timestomp`, or a simple `touch -d` set a file's SI timestamps to blend into OS-install dates (technique documented at https://attack.mitre.org/techniques/T1070/006/). Artifact: on NTFS the `$FILE_NAME` attribute timestamps are updated by the kernel and are far harder to forge, so SI-vs-FN divergence and an MFT sequence/record number inconsistent with an "old" born date remain. Evasion attempt: some tools also rewrite FN times via lower-level writes, but nanosecond-precision truncation (SI times ending in zeros) is itself an indicator noted in DFIR guidance (SANS FOR508, https://www.sans.org/cyber-security-courses/advanced-incident-response-threat-hunting/).
@@ -84,6 +90,10 @@ Attackers know timelines betray them, so they attempt anti-forensics. Concrete T
 - **Wiping browser history:** deleting history/cache leaves the SQLite databases with unallocated/freed pages and shifts the file's own MACB times, which Plaso's browser and `filestat` parsers still record.
 
 Ironically these actions leave their own artifacts — Plaso surfaces the divergence between `$STANDARD_INFORMATION` and `$FILE_NAME` MFT timestamps, out-of-order sequence numbers, and files whose filesystem `filestat` time contradicts their content or registry references. An analyst reviewing the super-timeline can spot the impossible ordering (e.g., a file "created" before the OS) that a timestomp introduces, turning the attacker's cover-up into a detection signal.
+
+**Additional TTPs:**
+- **T1119 (Inhibit System Recovery):** Attackers may delete or modify backup files to prevent system recovery. This can be detected by looking for the deletion or modification of `.bak`, `.old`, or `.tmp` files in the timeline. Plaso's file parsers can surface these artifacts, and the presence of `wbadmin` or `vssadmin` commands in the timeline may indicate the use of Windows Volume Shadow Copy Service (VSS) to delete backups.
+- **T1059.003 (Command and Scripting Interpreter: PowerShell):** Attackers may use PowerShell to execute commands or scripts on the system. This can be detected by looking for `powershell.exe` in the timeline or by searching for PowerShell-related commands in the `desc` or `data` fields. Evasion attempt: Attackers may use obfuscation or encoded commands to avoid detection, but Plaso's command-line parser can still surface these artifacts.
 
 ## Answer key
 Sample sha256 (disk.raw): `452d7f45bf0629a795cd413e200631eb3c8fcfef1327d3766014541aabe58c88`
@@ -106,6 +116,8 @@ Expected findings: the `filestat` parser produces the most events for a raw file
 - **T1070.006** — Indicator Removal: Timestomp (detect via MACB / SI-vs-FN inconsistencies in the super-timeline). https://attack.mitre.org/techniques/T1070/006/
 - **T1070.001** — Indicator Removal: Clear Windows Event Logs (gaps or missing log events; Event ID 1102). https://attack.mitre.org/techniques/T1070/001/
 - **T1074** — Data Staged (staging directories revealed by clustered filesystem creation times). https://attack.mitre.org/techniques/T1074/
+- **T1119** — Inhibit System Recovery (deletion or modification of backup files). https://attack.mitre.org/techniques/T1119/
+- **T1059.003** — Command and Scripting Interpreter: PowerShell (execution of PowerShell scripts or commands). https://attack.mitre.org/techniques/T1059/003/
 - **DFIR phase:** Examination / Analysis (timeline reconstruction and event correlation).
 
 ## Sources
@@ -127,6 +139,8 @@ Claim → source mapping (all URLs are authoritative tool/vendor/standards pages
 - MITRE ATT&CK — T1070.006 Timestomp: https://attack.mitre.org/techniques/T1070/006/
 - MITRE ATT&CK — T1070.001 Clear Windows Event Logs: https://attack.mitre.org/techniques/T1070/001/
 - MITRE ATT&CK — T1074 Data Staged: https://attack.mitre.org/techniques/T1074/
+- MITRE ATT&CK — T1119 Inhibit System Recovery: https://attack.mitre.org/techniques/T1119/
+- MITRE ATT&CK — T1059.003 Command and Scripting Interpreter: PowerShell: https://attack.mitre.org/techniques/T1059/003/
 
 ## Related modules
 - [Plaso super-timeline deep-dive](../23-plaso-supertimeline/README.md) -- shares log2timeline as its core engine and goes deeper on parsers/filters.
@@ -134,4 +148,4 @@ Claim → source mapping (all URLs are authoritative tool/vendor/standards pages
 - [Disk & filesystem forensics](../01-disk-forensics/README.md) -- same Foundations learning path; supplies the filesystem/`fls` groundwork used here.
 - [Memory forensics](../02-memory-forensics/README.md) -- same Foundations learning path; complements on-disk timelines with volatile-memory artifacts.
 
-<!-- cyberlab-enriched: v1 -->
+<!-- cyberlab-enriched: v2 -->
