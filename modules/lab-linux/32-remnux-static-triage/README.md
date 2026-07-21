@@ -143,6 +143,51 @@ sha256sum exercise/sample.exe
 - **T1218.011 — Signed Binary Proxy Execution: Rundll32** (context: malicious DLLs identified via pefile import analysis). https://attack.mitre.org/techniques/T1218/011/
 - **DFIR phase:** Identification and Examination — static triage prioritizes samples before dynamic analysis.
 
+
+### Essential Commands & Features
+
+REMnux’s static triage tools offer deeper analysis with targeted flags and methods. Below are **undemonstrated but critical** commands for `DIE` and `pefile` to uncover evasion techniques like **T1027.009 (Embedded Payloads)** and **T1564.001 (Hidden Files and Directories)**.
+
+#### **DIE (Detect It Easy)**
+- **Deep scan (`-d`)**:
+  Uncover obfuscated sections or anomalies missed by default scans. Use when suspecting **packed binaries (T1027.002)** or **steganography (T1027.009)**.
+  ```bash
+  diec -d suspicious.exe
+  ```
+- **All info (`-a`)**:
+  Extract *every* detectable attribute (compiler, linker, entropy, etc.). Critical for **supply-chain attacks (T1554)**.
+  ```bash
+  diec -a malware.dll
+  ```
+- **Entropy flags (`-e`)**:
+  Highlight high-entropy sections (e.g., encrypted payloads). Pair with `-d` for **T1027.002 (Software Packing)**.
+  ```bash
+  diec -e -d packed_sample.bin
+  ```
+
+#### **pefile (Python Library)**
+- **`dump_dict()`**:
+  Export parsed PE headers as a Python dictionary for scripting. Ideal for **automating detection of T1218.010 (Signed Binary Proxy Execution)**.
+  ```python
+  import pefile
+  pe = pefile.PE("signed_proxy.exe")
+  pe_dict = pe.dump_dict()
+  print(pe_dict["Rich Header"])
+  ```
+- **Rich Header Parsing**:
+  Detect tampered build environments (e.g., **T1553.002 (Code Signing)**). Use `pe.RICH_HEADER` to extract compiler stamps.
+  ```python
+  if hasattr(pe, "RICH_HEADER"):
+      print(f"Rich Header: {pe.RICH_HEADER.values}")
+  ```
+
+**Sources**:
+- [DIE GitHub: Advanced Usage](https://github.com/horsicq/Detect-It-Easy/blob/master/docs/USAGE.md#command-line)
+- [pefile Documentation: Rich Headers](https://github.com/erocarrera/pefile/blob/wiki/PEfileFeatures.md#rich-headers)
+
+### Threat Hunting & Detection Engineering
+To enhance threat hunting and detection engineering in the context of 32-bit Remnux static triage, focus on analyzing Windows Event Logs for signs of adversary activity. Specifically, monitor Event ID 4688 (Process Creation) for unusual process executions, and Event ID 4624 (Logon) for suspicious login attempts. These events can indicate techniques like [T1550](https://attack.mitre.org/techniques/T1550) - "Use Alternate Authentication Material" and [T1497](https://attack.mitre.org/techniques/T1497) - "Virtualization/Sandbox Evasion". For network traffic analysis, utilize Zeek's `http` log to inspect HTTP requests for potential command and control (C2) communications. Threat hunters can pivot on fields like `username`, `domain`, and `dst_ip` to identify related events. Additionally, analyzing Suricata's `files` log for suspicious file downloads can reveal potential malware activity. For more information on Windows Event Logs and network traffic analysis, visit the [Cyber and Infrastructure Security Agency (CISA)](https://www.cisa.gov/) and [NSA Cybersecurity](https://www.nsa.gov/What-We-Do/Cybersecurity/) websites.
+
 ## Sources
 Claim → source mapping (all URLs are real, authoritative pages):
 
@@ -176,3 +221,11 @@ Claim → source mapping (all URLs are real, authoritative pages):
 - [The Sleuth Kit command mastery](../22-sleuthkit-mastery/README.md) -- same learning path (Deep-dives); disk-forensics companion to file triage.
 
 <!-- cyberlab-enriched: v2 -->
+- https://github.com/horsicq/Detect-It-Easy/blob/master/docs/USAGE.md#command-line
+- https://github.com/erocarrera/pefile/blob/wiki/PEfileFeatures.md#rich-headers
+- https://attack.mitre.org/techniques/T1550
+- https://attack.mitre.org/techniques/T1497
+- https://www.cisa.gov/
+- https://www.nsa.gov/What-We-Do/Cybersecurity/
+
+<!-- cyberlab-enriched: v3 -->
