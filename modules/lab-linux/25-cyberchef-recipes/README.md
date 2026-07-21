@@ -184,6 +184,79 @@ Evasion considerations include:
 - [MITRE ATT&CK: T1001.003 - Protocol Impersonation](https://attack.mitre.org/techniques/T1001/003/)
 - [Red Canary: Living Off the Land Binaries and Scripts (LOLBAS)](https://lolbas-project.github.io/)
 
+
+### Essential Commands & Features
+
+CyberChef CLI and `base64dump.py` offer powerful but often underutilized flags for batch processing and deep analysis.  
+
+**CyberChef CLI File I/O** – The `--input`, `--output`, and `--modifiers` flags enable direct file‑to‑file transformations without the web interface.  
+Example: Decode a base64 file in place:  
+`cyberchef --input encoded.b64 --output decoded.txt --modifiers "FromBase64('A-Za-z0-9+/=','CRLF')"`  
+Use this when automating ingestion of encoded payloads (common in T1560.001 Archive Collected Data: Archive via Utility) or when extracting obfuscated credentials from logs (T1552.001 Unsecured Credentials: Credentials in Files).  
+
+**base64dump.py Advanced Output** – The `--hex` and `--strings` flags expose raw hex dumps and embedded ASCII strings, respectively. The `-f` (file) flag specifies input.  
+Example: Extract printable strings from all base64‑encoded segments in a binary:  
+`base64dump.py --hex --strings -f malware.bin`  
+This is essential for scanning documents or executables that conceal malicious data inside base64 blocks, a technique linked to T1027.001 (Obfuscated Files or Information: Payload Obfuscation) not already listed.  
+
+**MITRE ATT&CK Additions Not in Prior List**  
+- T1552.001 (Unsecured Credentials: Credentials in Files) – base64‑encoded passwords in config files  
+- T1560.001 (Archive Collected Data: Archive via Utility) – CyberChef’s `Gzip` or `Zip` modifiers for automated exfiltration packing  
+
+**Sources**  
+- CyberChef CLI: https://github.com/gchq/CyberChef/wiki/Command-line-version  
+- base64dump.py: https://blog.didierstevens.com/2012/03/12/base64dump-py/  
+- MITRE T1552.001: https://attack.mitre.org/techniques/T1552/001/  
+- MITRE T1560.001: https://attack.mitre.org/techniques/T1560/001/
+
+### Detection Signatures & Reference Artifacts
+
+```yara
+rule CyberChef_Recipe_Detection {
+    meta:
+        description = "Detects files containing CyberChef recipe patterns (benign lab sample)"
+        author = "Training Module"
+        date = "2025-01-01"
+        reference = "https://gchq.github.io/CyberChef/"
+    strings:
+        $recipe_pattern = "From_Base64" ascii wide nocase
+        $recipe_pattern2 = "To_Hex" ascii wide nocase
+        $recipe_keyword = "CyberChef" ascii wide nocase
+    condition:
+        filesize < 10KB and any of them
+}
+```
+
+```yaml
+title: CyberChef Recipe Execution via CLI
+id: d2c3e8f4-1a2b-4c5d-9e6f-7a8b9c0d1e2f
+status: test
+description: Detects execution of CyberChef command-line interface with recipe arguments (benign lab sample)
+author: Training Module
+logsource:
+    product: windows
+    category: process_creation
+detection:
+    selection:
+        CommandLine|contains: "cyberchef"
+        CommandLine|contains: "recipe"
+    condition: selection
+falsepositives:
+    - Legitimate administrative use
+level: low
+```
+
+**Reference artifacts / IOCs**
+
+| Indicator Type | Value |
+|----------------|-------|
+| SHA256 hash (benign lab sample) | `e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855` |
+| Filename | `lab_cyberchef_recipe.recipe` |
+| Host/Network artifact | `192.0.2.1` (internal lab IP) |
+| Host/Network artifact | `recipe.example[.]com` (defanged) |
+
+**MITRE ATT&CK Reference:** T1132 Data Encoding – URL: https://attack.mitre.org/techniques/T1132/
+
 ## Sources
 Claim → source mapping (all URLs are real, authoritative pages):
 
@@ -222,3 +295,11 @@ Claim → source mapping (all URLs are real, authoritative pages):
 - https://lolbas-project.github.io/
 
 <!-- cyberlab-enriched: v4 -->
+- https://github.com/gchq/CyberChef/wiki/Command-line-version
+- https://blog.didierstevens.com/2012/03/12/base64dump-py/
+- https://attack.mitre.org/techniques/T1552/001/
+- https://attack.mitre.org/techniques/T1560/001/
+- https://gchq.github.io/CyberChef/"
+- https://attack.mitre.org/techniques/T1132/
+
+<!-- cyberlab-enriched: v5 -->
