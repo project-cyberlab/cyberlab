@@ -69,6 +69,8 @@ In IR the super-timeline is the backbone of the examination phase: after Securit
 - **Detect timestomping (T1070.006).** In the timeline, compare NTFS `$STANDARD_INFORMATION` vs `$FILE_NAME` times for the same file; a `$SI` time older than the `$FN` time, or sub-second-zeroed `$SI` timestamps, is a classic timestomp tell. Plaso's `filestat`/NTFS parsers surface both attribute sets ([plaso.readthedocs.io](https://plaso.readthedocs.io/en/latest/)); the discrepancy is the documented detection for T1070.006 ([attack.mitre.org/techniques/T1070/006](https://attack.mitre.org/techniques/T1070/006/)).
 - **Detect log clearing (T1070.001).** A gap in the Windows Security log paired with Event ID 1102 ("audit log was cleared") is the primary signal; Security Onion ingests Windows event logs so this can be alerted/hunted in Elastic ([attack.mitre.org/techniques/T1070/001](https://attack.mitre.org/techniques/T1070/001/)).
 - **Persistence timing.** For T1053.005 (Scheduled Task) and T1547.001 (Registry Run Keys / Startup Folder), the timeline exposes when the Task XML, `at`/`cron` entry, or `Run` key value was actually written versus its claimed metadata ([T1053.005](https://attack.mitre.org/techniques/T1053/005/), [T1547.001](https://attack.mitre.org/techniques/T1547/001/)).
+- **Detect lateral movement (T1570).** A timeline can reveal the creation of a service (e.g., `sc.exe create`) or a remote scheduled task (`schtasks /create /s TARGET`) on a remote host. Look for `Service Control Manager` Event ID 7045 (service installed) or `TaskScheduler` Event ID 106 (task registered) in the Windows System log, which Plaso parses. The timeline can correlate these with network connections from the source host, visible in Zeek `conn.log` fields `id.orig_h`, `id.resp_h`, and `proto` ([T1570](https://attack.mitre.org/techniques/T1570/)).
+- **Detect file exfiltration (T1041).** A timeline can show large file writes to staging directories (e.g., `C:\Windows\Temp\`, `%TEMP%`) followed by network connections to external IPs. Filter the Plaso CSV for `source` containing `WEBHIST` (browser downloads) or `LNK` (shortcut files) and `desc` containing `URL` or `Target` pointing to remote shares or cloud storage. Correlate with Zeek `files.log` `tx_hosts` and `conn.log` `resp_bytes` spikes ([T1041](https://attack.mitre.org/techniques/T1041/)).
 
 This workflow follows the SANS super-timeline analysis method ([SANS DFIR — super-timeline analysis](https://www.sans.org/blog/digital-forensic-sifting-super-timeline-analysis-and-creation/)).
 
@@ -79,6 +81,8 @@ Attackers know timelines betray them, so they actively fight timestamp evidence.
 - **Log clearing / file deletion (T1070.001, T1070.004).** Clearing the Windows event log (leaving Event ID 1102) or deleting a dropper does not erase the NTFS change journal (`$UsnJrnl:$J`), `$LogFile`, `$MFT` resident/unallocated entries, Registry shellbags, or Prefetch — all of which log2timeline parses, so deleted activity is frequently reconstructed ([T1070.001](https://attack.mitre.org/techniques/T1070/001/), [T1070.004](https://attack.mitre.org/techniques/T1070/004/)).
 - **Persistence footprints.** A scheduled task writes an XML under `C:\Windows\System32\Tasks\` and registers keys under `HKLM\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Schedule\TaskCache` (T1053.005); a Run-key implant writes to `HKCU\...\CurrentVersion\Run` (T1547.001). Both create hive write-times the timeline records even when the payload's own timestamps are forged ([T1053.005](https://attack.mitre.org/techniques/T1053/005/), [T1547.001](https://attack.mitre.org/techniques/T1547/001/)).
 - **Evasion limits.** The only robust evasion is anti-forensics against ALL sources simultaneously (kernel-level time hooks, wiping the change journal, disabling Prefetch/logging beforehand) — expensive, noisy, and itself an anomaly. The super-timeline's strength is cross-source correlation: it surfaces the inconsistency the intruder could not scrub everywhere at once.
+- **Lateral movement artifacts (T1570).** Attackers using `sc.exe` or `schtasks` to move laterally leave behind service creation events (Event ID 7045) and scheduled task registration events (Event ID 106) in the Windows System log. Even if logs are cleared, the NTFS `$UsnJrnl` may retain the file creation of the service binary or task XML. Plaso's `winevtx` parser extracts these events, and the timeline can show the exact second the remote execution was attempted ([T1570](https://attack.mitre.org/techniques/T1570/)).
+- **Exfiltration staging (T1041).** Attackers often stage data in temporary directories before exfiltration. The timeline will show large file writes (e.g., `C:\Windows\Temp\large.zip`) with timestamps that can be correlated with outbound network connections in Zeek `conn.log`. Browser history (parsed by Plaso's `chrome_history`, `firefox_history` plugins) may also show uploads to cloud storage or paste sites ([T1041](https://attack.mitre.org/techniques/T1041/)).
 
 ## Answer key
 Expected finding: the earliest creation event is `2023-06-01 08:14:22` for the path `/var/log/app/install.log` (MACB flag column shows `...b`).
@@ -102,6 +106,8 @@ Sample sha256 (`bodyfile.txt`): `ad0a859947384b0ad9e942aaa37633ba181b3f2c701d0d3
 - **T1070.001** — Indicator Removal: Clear Windows Event Logs (residual journal/USN entries and Event ID 1102 recovered) — https://attack.mitre.org/techniques/T1070/001/
 - **T1070.004** — Indicator Removal: File Deletion (deleted droppers reconstructed from `$UsnJrnl`/`$MFT`) — https://attack.mitre.org/techniques/T1070/004/
 - **T1053.005** — Scheduled Task/Job: Scheduled Task; **T1547.001** — Boot or Logon Autostart Execution: Registry Run Keys / Startup Folder (persistence write times) — https://attack.mitre.org/techniques/T1053/005/ , https://attack.mitre.org/techniques/T1547/001/
+- **T1570** — Lateral Tool Transfer (detected via service/task creation events and network correlation) — https://attack.mitre.org/techniques/T1570/
+- **T1041** — Exfiltration Over C2 Channel (detected via staging file writes and network connections) — https://attack.mitre.org/techniques/T1041/
 - **DFIR phase:** Examination & Analysis (timeline reconstruction), supporting Identification of the earliest compromise indicator.
 
 ## Sources
@@ -122,6 +128,10 @@ Claim → source mapping (all URLs are official tool docs / repos, MITRE ATT&CK,
 - T1070.004 File Deletion — MITRE ATT&CK: https://attack.mitre.org/techniques/T1070/004/
 - T1053.005 Scheduled Task (Tasks path / TaskCache) — MITRE ATT&CK: https://attack.mitre.org/techniques/T1053/005/
 - T1547.001 Registry Run Keys / Startup Folder — MITRE ATT&CK: https://attack.mitre.org/techniques/T1547/001/
+- T1570 Lateral Tool Transfer (detection via service/task creation events) — MITRE ATT&CK: https://attack.mitre.org/techniques/T1570/
+- T1041 Exfiltration Over C2 Channel (detection via staging file writes and network connections) — MITRE ATT&CK: https://attack.mitre.org/techniques/T1041/
+- Plaso parsers for Windows events (`winevtx`), browser history (`chrome_history`, `firefox_history`), and NTFS artifacts (`filestat`, `usnjrnl`) — Plaso parsers documentation: https://plaso.readthedocs.io/en/latest/sources/user/Event-filters.html#parsers
+- Zeek log fields (`conn.log`, `files.log`) for network correlation — Zeek logs documentation: https://docs.zeek.org/en/current/script-reference/log-files.html
 
 ## Related modules
 - [Timeline / super-timelining](../03-timeline-analysis/README.md) -- shares log2timeline as the core timeline engine.
@@ -129,4 +139,4 @@ Claim → source mapping (all URLs are official tool docs / repos, MITRE ATT&CK,
 - [Volatility 3 deep-dive (memory plugins & workflow)](../20-volatility-deep/README.md) -- same learning path (Deep-dives); memory-side timeline correlation.
 - [YARA rule authoring & threat hunting](../21-yara-authoring/README.md) -- same learning path (Deep-dives); pairs signatures with timeline findings.
 
-<!-- cyberlab-enriched: v1 -->
+<!-- cyberlab-enriched: v2 -->
