@@ -181,6 +181,36 @@ vshadowmount -o /mnt/vss -X C:\vssadmin_list_shadows.txt
 ### Threat Hunting & Detection Engineering
 To detect malicious activity related to Windows artifact libraries, threat hunters can focus on techniques such as [T1204](https://attack.mitre.org/techniques/T1204) - User Execution, where an adversary may execute malicious code or scripts, and [T1218](https://attack.mitre.org/techniques/T1218) - Signed Binary Proxy Execution, which involves using signed Windows binaries to execute malicious code. Detection logic can be based on Windows Event IDs such as 4688 (Process Creation) and 4703 (Token Elevation Type), where the `CommandLine` field may indicate suspicious script execution or binary usage. Additionally, analyzing Zeek logs for unusual DNS queries or HTTP requests can help identify potential malicious activity. Threat hunters can pivot on fields such as `Image` (executable name) and `CommandLine` to investigate further. For more information on threat hunting and detection engineering, visit the [Cyber and Infrastructure Security Agency (CISA)](https://www.cisa.gov/) website or the [National Institute of Standards and Technology (NIST)](https://www.nist.gov/) Cybersecurity Framework page.
 
+
+### Essential Commands & Features
+
+Below are critical but often overlooked commands and features for extracting structured forensic artifacts from Windows systems using the `libyal` tool suite. These examples address gaps in typical workflows, such as exporting EVTX logs in machine-readable formats, extracting ESEDB metadata, and uncovering hidden items in PFF files.
+
+#### **1. `evtxexport -f xml` – Structured EVTX Output**
+Use this to export Windows Event Logs (EVTX) in XML format for parsing with tools like `jq` or SIEM ingestion. This is invaluable for detecting **T1059.003 (Command-Line Interface)** or **T1562.001 (Disable or Modify Tools)** via PowerShell or security tool tampering.
+```bash
+evtxexport -f xml Security.evtx > security_events.xml
+```
+
+#### **2. `esedbexport -m tables` – ESEDB Metadata Extraction**
+Extracts table metadata from Extensible Storage Engine (ESE) databases (e.g., `WebCacheV01.dat`). Useful for analyzing **T1074.001 (Data Staged: Local Data Staging)** via browser artifacts or Windows Search history.
+```bash
+esedbexport -m tables WebCacheV01.dat
+```
+
+#### **3. `pffexport --include-all` – Hidden PFF Items**
+Recovers *all* items (including hidden/deleted) from Outlook PST/OST files. Critical for investigating **T1114.002 (Email Collection: Remote Email Collection)** or phishing artifacts.
+```bash
+pffexport --include-all mailbox.pst
+```
+
+**Sources:**
+- [Libyal Tools Documentation (evtxexport/esedbexport/pffexport)](https://github.com/libyal)
+- [DFIR Review: ESEDB Forensics](https://www.dfir.review/)
+
+### Adversary Emulation & Red-Team Perspective
+Adversaries may leverage Windows artifact libraries to evade detection and persist on a compromised system. For instance, an attacker may utilize the `T1587: Modify Existing Service` technique to manipulate existing services and blend in with legitimate system activity, making it challenging for defenders to detect malicious behavior. Additionally, attackers may employ the `T1595: Active Scanning` technique to gather information about the system and its connected devices, which can help them identify potential vulnerabilities to exploit. When abusing Windows artifact libraries, attackers may leave behind artifacts such as modified registry keys, suspicious service configurations, or unusual network activity. To evade detection, attackers may use code obfuscation, encryption, or anti-forensic techniques to conceal their malicious activities. Understanding these tactics, techniques, and procedures (TTPs) is crucial for effective threat hunting and incident response. For more information on adversary emulation and red-team operations, visit the Cyber and Infrastructure Security Agency (CISA) website at [https://www.cisa.gov](https://www.cisa.gov) or the National Institute of Standards and Technology (NIST) Computer Security Resource Center at [https://csrc.nist.gov](https://csrc.nist.gov).
+
 ## Sources
 Claim → source mapping (all URLs are official tool docs/repos, Microsoft Learn, MITRE ATT&CK, or recognized project docs):
 
@@ -221,3 +251,9 @@ Claim → source mapping (all URLs are official tool docs/repos, Microsoft Learn
 - https://www.nist.gov/
 
 <!-- cyberlab-enriched: v3 -->
+- https://github.com/libyal
+- https://www.dfir.review/
+- https://www.cisa.gov](https://www.cisa.gov
+- https://csrc.nist.gov](https://csrc.nist.gov
+
+<!-- cyberlab-enriched: v4 -->
