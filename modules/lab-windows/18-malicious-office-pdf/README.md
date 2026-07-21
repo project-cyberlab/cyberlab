@@ -41,21 +41,21 @@ Expected output: a file listing showing `PDFStreamDumper.exe` (with size/timesta
 # Resolve the tool path (see Environment check) then open the sample.
 & (Get-ChildItem 'C:\' -Recurse -Filter 'PDFStreamDumper.exe' -ErrorAction SilentlyContinue | Select-Object -First 1).FullName "$PWD\exercise\invoice_sample.pdf"
 ```
-Expected: the PDFStreamDumper window opens with a scrollable list of objects (e.g. `Obj 1`, `Obj 2`, ...). Selecting an object shows its dictionary and decoded stream body in the lower pane. **Why this matters:** PDFStreamDumper automatically applies stream filters such as `/FlateDecode`, so the decoded pane can reveal script or action content that is *not* visible in the raw bytes. Use the **Search For > JavaScript** and header/OpenAction views to surface `/OpenAction` and `/JS` entries (feature overview — http://sandsprite.com/blogs/index.php?uid=7&pid=57).
+Expected: the PDFStreamDumper window opens with a scrollable list of objects (e.g. `Obj 1`, `Obj 2`, ...). Selecting an object shows its dictionary and decoded stream body in the lower pane. **Why this matters:** PDFStreamDumper automatically applies stream filters such as `/FlateDecode`, so the decoded pane can reveal script or action content that is *not* visible in the raw bytes. Use the **Search For > JavaScript** and header/OpenAction views to surface `/OpenAction` and `/JS` entries (feature overview — http://sandsprite.com/blogs/index.php?uid=7&pid=57). For deeper analysis, also inspect `/AA` (Additional Actions) triggers that may fire on page-open, field-focus, or document-close events, each of which can host a separate malicious action (PDF specification on Additional Actions — https://blog.didierstevens.com/programs/pdf-tools/). Additionally, look for `/EmbeddedFiles` entries that may contain hidden executables or scripts not executed automatically but available for manual extraction (T1027 Obfuscated Files or Information — https://attack.mitre.org/techniques/T1027/).
 
 2. Confirm suspicious triggers exist without the GUI by scanning the raw file for the classic PDF trigger keywords. **Why:** a fast raw-byte grep corroborates the GUI findings and is scriptable for bulk triage; but note the nuance — because these keywords may live inside a *compressed* object stream, a negative result here does **not** prove the trigger is absent. Treat the GUI (which decompresses) as authoritative and this grep as a quick first pass.
 ```powershell
-Select-String -Path "$PWD\exercise\invoice_sample.pdf" -Pattern 'OpenAction','JavaScript','JS','Launch','URI' -AllMatches |
+Select-String -Path "$PWD\exercise\invoice_sample.pdf" -Pattern 'OpenAction','JavaScript','JS','Launch','URI','AA' -AllMatches |
     Select-Object LineNumber, Line
 ```
-Expected: matching lines are printed for the keywords present in the sample (at minimum `/OpenAction` and a `/URI`), confirming the document contains an auto-trigger and an outbound link. The named PDF actions here — `/OpenAction` (run an action when the document opens), `/JavaScript`/`/JS`, `/Launch`, and `/URI` — are all defined document/action keywords whose abuse is documented in Didier Stevens' PDF analysis material (https://blog.didierstevens.com/programs/pdf-tools/). Note the additional trigger keyword `/AA` (Additional Actions): unlike `/OpenAction` it can fire on page-open, field-focus, or document-close events, so a thorough grep should include it as well (PDF action dictionaries — https://blog.didierstevens.com/programs/pdf-tools/).
+Expected: matching lines are printed for the keywords present in the sample (at minimum `/OpenAction` and a `/URI`), confirming the document contains an auto-trigger and an outbound link. The named PDF actions here — `/OpenAction` (run an action when the document opens), `/JavaScript`/`/JS`, `/Launch`, `/URI`, and `/AA` (Additional Actions) — are all defined document/action keywords whose abuse is documented in Didier Stevens' PDF analysis material (https://blog.didierstevens.com/programs/pdf-tools/). Including `/AA` in the pattern is important because it can fire on events like page-open or field-focus, giving attackers an alternative to `/OpenAction`.
 
 3. Run OneNoteAnalyzer on the OneNote sample to dump embedded objects into an output folder. **Why:** OneNote lures hide the real payload as an embedded attachment placed under a decoy "Click to view" image; OneNoteAnalyzer walks the `[MS-ONESTORE]` `FileDataStoreObject` structures and writes each embedded file out to disk so you can inspect and hash it statically.
 ```powershell
 & (Get-ChildItem 'C:\' -Recurse -Filter 'OneNoteAnalyzer.exe' -ErrorAction SilentlyContinue | Select-Object -First 1).FullName --file "$PWD\exercise\note_sample.one"
 Get-ChildItem "$PWD\exercise\note_sample_content" -Recurse | Select-Object FullName, Length
 ```
-Expected: OneNoteAnalyzer prints extraction progress and creates a `*_content` directory containing extracted attachments/images (for the inert sample this is a harmless text/HTA-style stub), which the second command lists. The `--file` argument and the `<name>_content` output-directory behavior are documented in the tool's README (https://github.com/knight0x07/OneNoteAnalyzer). **Why this matters:** the extracted files should be hashed immediately (`Get-FileHash -Algorithm SHA256`) — the SHA-256 becomes a pivot for `files.log` and VirusTotal/threat-intel lookups, and the original embedded filename (recovered from the `FileDataStoreObject`) is itself an IOC even before you determine file type.
+Expected: OneNoteAnalyzer prints extraction progress and creates a `*_content` directory containing extracted attachments/images (for the inert sample this is a harmless text/HTA-style stub), which the second command lists. The `--file` argument and the `<name>_content` output-directory behavior are documented in the tool's README (https://github.com/knight0x07/OneNoteAnalyzer). **Why this matters:** the extracted files should be hashed immediately (`Get-FileHash -Algorithm SHA256`) — the SHA-256 becomes a pivot for `files.log` and VirusTotal/threat-intel lookups, and the original embedded filename (recovered from the `FileDataStoreObject`) is itself an IOC even before you determine file type. Additionally, inspect the `open_me.txt` stub for any encoded script or base64 blocks that may be hidden inside what appears to be a simple text file (T1027 Obfuscated Files or Information — https://attack.mitre.org/techniques/T1027/).
 
 ## Hands-on exercise
 Using the two samples in this module's `exercise/` directory, determine (a) which PDF object holds the auto-run trigger and what outbound URI it references, and (b) the filename and type of the payload embedded in the OneNote file.
@@ -67,26 +67,39 @@ Sample artifacts (both **benign/inert — no live malware**, safe to open with n
 Note: `example.com` is a reserved documentation domain that never resolves to a live host, per IANA/RFC 2606 & RFC 6761 (https://www.iana.org/domains/reserved), which is why it is safe to leave in an exercise IOC.
 
 ## SOC analyst perspective
-Malicious documents are a top initial-access vector, so defenders triage them constantly. PDFStreamDumper and OneNoteAnalyzer let an IR analyst statically confirm weaponization and extract IOCs — embedded URIs, dropped-file names, and payload hashes — without detonating the sample, which maps to ATT&CK **T1204.002 (User Execution: Malicious File)** (https://attack.mitre.org/techniques/T1204/002/), **T1566.001 (Spearphishing Attachment)** (https://attack.mitre.org/techniques/T1566/001/), and **T1027 (Obfuscated Files or Information)** (https://attack.mitre.org/techniques/T1027/).
+Malicious documents are a top initial-access vector, so defenders triage them constantly. PDFStreamDumper and OneNoteAnalyzer let an IR analyst statically confirm weaponization and extract IOCs — embedded URIs, dropped-file names, and payload hashes — without detonating the sample, which maps to ATT&CK **T1204.002 (User Execution: Malicious File)** (https://attack.mitre.org/techniques/T1204/002/), **T1566.001 (Spearphishing Attachment)** (https://attack.mitre.org/techniques/T1566/001/), **T1204.001 (User Execution: Malicious Link)** (https://attack.mitre.org/techniques/T1204/001/) for URI-based callbacks, and **T1027 (Obfuscated Files or Information)** (https://attack.mitre.org/techniques/T1027/). Attackers increasingly use HTML smuggling (T1027.006 — https://attack.mitre.org/techniques/T1027/006/) to embed payloads in PDFs via obfuscated JavaScript that constructs a binary at runtime; the raw PDF stream may contain base64-encoded data that PDFStreamDumper's decompression and hex view can reveal.
 
-Concrete detection logic and Security Onion pivots:
-- **Network (Suricata):** pivot on the extracted URI/host. In Security Onion's Alerts/Hunt interface filter on Suricata HTTP fields `http.hostname` and `http.url` for the callback (Security Onion Suricata docs — https://docs.securityonion.net/en/2.4/suricata.html). Suricata's `http.user_agent` keyword is a further pivot: document-spawned scripting agents (`mshta`, PowerShell `WebClient`, `certutil`) frequently emit default or hardcoded user-agent strings that differ from the host's normal browser, so hunting on anomalous `http.user_agent` values tied to the same `http.hostname` narrows the callback quickly. Emerging-Threats HTTP rules commonly fire on suspicious `GET` patterns from document-spawned agents.
-- **Network (Zeek):** query `http.log` (fields `host`, `uri`, `user_agent`) for the outbound reference and `files.log` (fields `sha256`, `mime_type`, `filename`) to hunt the payload hash and to spot document MIME types traversing the wire (Zeek in Security Onion — https://docs.securityonion.net/en/2.4/zeek.html; Zeek `files.log` reference — https://docs.zeek.org/en/master/logs/files.html). A high-value hunt: correlate a `files.log` entry whose `mime_type` is `application/onenote` or `application/pdf` against the subsequent `http.log` `host` from the same `id.orig_h` within a short window — a document arriving and the same host beaconing minutes later is the delivery→execution chain in log form. Zeek's `dns.log` (fields `query`, `answers`) is a parallel pivot for the callback domain even when the HTTP body is TLS-encrypted (Zeek `dns.log` — https://docs.zeek.org/en/master/logs/dns.html).
-- **Endpoint / EDR:** alert on suspicious process ancestry — `POWERPNT.EXE`/`WINWORD.EXE`/`ONENOTE.EXE` (or `onenotem.exe`) spawning `mshta.exe`, `wscript.exe`, `cscript.exe`, `cmd.exe`, or `powershell.exe`. In Security Onion these appear as Sysmon Event ID 1 (process create) documents in Elastic; hunt `process.parent.name` = onenote and `process.name` in the LOLBIN list. This pattern corresponds to follow-on **T1218.005 (Mshta)** (https://attack.mitre.org/techniques/T1218/005/) and **T1059.001 / T1059.003** (https://attack.mitre.org/techniques/T1059/001/, https://attack.mitre.org/techniques/T1059/003/). Sysmon reference — https://learn.microsoft.com/en-us/sysinternals/downloads/sysmon.
-- **Endpoint / file-drop telemetry:** Sysmon Event ID 11 (FileCreate) is the durable static-drop signal — hunt for writes of `.hta`, `.js`, `.vbs`, `.bat`, `.cmd`, `.lnk`, or `.exe` under the OneNote temp/cache path or `%TEMP%` where the `process.parent.name` is `ONENOTE.EXE`; this catches the extracted attachment even before it executes (Sysmon — https://learn.microsoft.com/en-us/sysinternals/downloads/sysmon). Mark-of-the-Web presence is a corroborating artifact: files downloaded via a browser/mail client carry the `Zone.Identifier` alternate data stream, and its absence on a document-dropped child is itself suspicious (MOTW behavior — https://learn.microsoft.com/en-us/deployoffice/security/internet-macros-blocked).
-- **Registry / persistence hunt:** many document chains establish persistence after execution — pivot to Sysmon Event ID 13 (RegistryValue Set) for writes under `HKCU\Software\Microsoft\Windows\CurrentVersion\Run`, mapping to **T1547.001 (Registry Run Keys / Startup Folder)** (https://attack.mitre.org/techniques/T1547/001/). Additionally, **T1105 (Ingress Tool Transfer)** (https://attack.mitre.org/techniques/T1105/) describes the second-stage download you observe in `http.log`/`files.log`, so tie the beacon and the newly-written binary hash together as one hunt.
+### Detection Engineering
+
+To operationalize the IOCs extracted from document analysis, implement the following detection logic tied to specific log sources and fields:
+
+- **Network (Suricata):** pivot on the extracted URI/host. In Security Onion's Alerts/Hunt interface filter on Suricata HTTP fields `http.hostname` and `http.url` for the callback (Security Onion Suricata docs — https://docs.securityonion.net/en/2.4/suricata.html). Suricata's `http.user_agent` keyword is a further pivot: document-spawned scripting agents (`mshta`, PowerShell `WebClient`, `certutil`) frequently emit default or hardcoded user-agent strings that differ from the host's normal browser, so hunting on anomalous `http.user_agent` values tied to the same `http.hostname` narrows the callback quickly. For PDF-specific triggers, Suricata's `fileinfo` keyword can log extracted file hashes (mime type `application/pdf`) — pivot on the SHA-256 against known malicious file lists. Emerging-Threats HTTP rules commonly fire on suspicious `GET` patterns from document-spawned agents (e.g., retrieving `.hta`, `.ps1`, `.vbs`).
+- **Network (Zeek):** query `http.log` (fields `host`, `uri`, `user_agent`) for the outbound reference and `files.log` (fields `sha256`, `mime_type`, `filename`) to hunt the payload hash and to spot document MIME types traversing the wire (Zeek in Security Onion — https://docs.securityonion.net/en/2.4/zeek.html; Zeek `files.log` reference — https://docs.zeek.org/en/master/logs/files.html). A high-value hunt: correlate a `files.log` entry whose `mime_type` is `application/onenote` or `application/pdf` against the subsequent `http.log` `host` from the same `id.orig_h` within a short window — a document arriving and the same host beaconing minutes later is the delivery→execution chain in log form. Zeek's `dns.log` (fields `query`, `answers`) is a parallel pivot for the callback domain even when the HTTP body is TLS-encrypted (Zeek `dns.log` — https://docs.zeek.org/en/master/logs/dns.html). Additionally, inspect `ssl.log` for JA3 fingerprints of TLS clients; document-spawned agents using .NET `System.Net.WebClient` or PowerShell `Invoke-WebRequest` often produce distinct JA3 signatures (a pivot for anomaly detection).
+- **Endpoint / EDR:** alert on suspicious process ancestry — `POWERPNT.EXE`/`WINWORD.EXE`/`ONENOTE.EXE` (or `onenotem.exe`) spawning `mshta.exe`, `wscript.exe`, `cscript.exe`, `cmd.exe`, or `powershell.exe`. In Security Onion these appear as Sysmon Event ID 1 (process create) documents in Elastic; hunt `process.parent.name` = onenote and `process.name` in the LOLBIN list. This pattern corresponds to follow-on **T1218.005 (Mshta)** (https://attack.mitre.org/techniques/T1218/005/) and **T1059.001 / T1059.003** (https://attack.mitre.org/techniques/T1059/001/, https://attack.mitre.org/techniques/T1059/003/). Sysmon reference — https://learn.microsoft.com/en-us/sysinternals/downloads/sysmon. For PDF-launched JavaScript executed via Adobe Reader, look for `AcroRd32.exe` spawning `wscript.exe` or `cmd.exe` (Sysmon Event ID 1 with ParentImage containing `AcroRd32.exe`).
+- **Endpoint / file-drop telemetry:** Sysmon Event ID 11 (FileCreate) is the durable static-drop signal — hunt for writes of `.hta`, `.js`, `.vbs`, `.bat`, `.cmd`, `.lnk`, or `.exe` under the OneNote temp/cache path or `%TEMP%` where the `process.parent.name` is `ONENOTE.EXE`; this catches the extracted attachment even before it executes (Sysmon — https://learn.microsoft.com/en-us/sysinternals/downloads/sysmon). Mark-of-the-Web presence is a corroborating artifact: files downloaded via a browser/mail client carry the `Zone.Identifier` alternate data stream, and its absence on a document-dropped child is itself suspicious (MOTW behavior — https://learn.microsoft.com/en-us/deployoffice/security/internet-macros-blocked). Sysmon Event ID 15 (FileCreateStreamHash) can log the creation of the `Zone.Identifier` stream itself, providing an early indicator of a downloaded file that subsequently spawned a process.
+- **Registry / persistence hunt:** many document chains establish persistence after execution — pivot to Sysmon Event ID 13 (RegistryValue Set) for writes under `HKCU\Software\Microsoft\Windows\CurrentVersion\Run`, mapping to **T1547.001 (Registry Run Keys / Startup Folder)** (https://attack.mitre.org/techniques/T1547/001/). Additionally, **T1105 (Ingress Tool Transfer)** (https://attack.mitre.org/techniques/T1105/) describes the second-stage download you observe in `http.log`/`files.log`, so tie the beacon and the newly-written binary hash together as one hunt. For evasion, attackers may use **T1564.001 (Hide Artifacts: Hidden Files and Directories)** (https://attack.mitre.org/techniques/T1564/001/) by setting the `+H` attribute on dropped payloads — Sysmon Event ID 11 logs the file path, so hunting for files created in `%TEMP%` with the `Hidden` attribute (checkable via `Get-ItemProperty -Path <file> -Name Attributes`) can reveal this technique.
+- **Threat hunting pivots:** 
+  - Correlate Zeek `dns.log` with `http.log` on `query` and `host` to find domains resolved immediately before an HTTP callback with a short TTL (attacker-controlled domains often have low TTLs for fast-flux).
+  - In Windows Event Logs, search for Event ID 4688 (Process Creation) with `CommandLine` containing `mshta` or `powershell -EncodedCommand` originating from `ONENOTE.EXE` — this pattern is the execution graffiti left by a OneNote lure.
+  - Hunt for Sysmon Event ID 1 where the `ParentImage` contains `AcroRd32.exe` and the child image is `wscript.exe` or `cscript.exe` — a strong indicator of PDF JavaScript exploitation.
+- **Scheduled Task persistence:** after initial execution, attackers often create scheduled tasks via `schtasks` or `Register-ScheduledTask`. Hunt Sysmon Event ID 1 for `schtasks.exe /create` or `schtasks.exe /run` with a parent process of `cmd.exe` or `powershell.exe` spawned from the document. This maps to **T1053.005 (Scheduled Task/Job: Scheduled Task)** (https://attack.mitre.org/techniques/T1053/005/). The task creation itself is logged in Windows Event ID 4698 (Scheduled Task Created) – pivot on `TaskName` and `TaskContent` fields for known persistence patterns.
+- **Process injection indicators:** document-spawned scripts may inject shellcode into legitimate processes to evade detection. When a process like `rundll32.exe` or `regsvr32.exe` (both LOLBINs) is used as a launch point, Sysmon Event ID 8 (CreateRemoteThread) can indicate injection. Correlate with **T1055.012 (Process Injection: Shellcode Injection)** (https://attack.mitre.org/techniques/T1055/012/). If the document contains embedded shellcode (e.g., a PDF JavaScript that uses `unescape` to decode an executable), PDFStreamDumper's hex view can reveal the encoded bytes.
 
 Confirming a `/OpenAction` auto-launch or a OneNote-embedded HTA lets you write a targeted detection and scope which mailboxes/hosts received the same document family, feeding your case timeline and containment decisions.
 
 ## Attacker perspective
-Adversaries embed auto-executing content in PDFs (`/OpenAction`, `/AA`, `/Launch`, `/JavaScript`, `/URI`) and, after Microsoft began blocking VBA macros from files marked with Mark-of-the-Web by default in 2022 (Microsoft announcement — https://learn.microsoft.com/en-us/deployoffice/security/internet-macros-blocked), pivoted heavily to OneNote `.one` files that embed HTA/JScript/batch/LNK attachments launched when the victim double-clicks a fake "Open/View" button placed over the embedded object (ATT&CK **T1566.001** delivery — https://attack.mitre.org/techniques/T1566/001/, **T1204.002** execution — https://attack.mitre.org/techniques/T1204/002/).
+Adversaries embed auto-executing content in PDFs (`/OpenAction`, `/AA`, `/Launch`, `/JavaScript`, `/URI`) and, after Microsoft began blocking VBA macros from files marked with Mark-of-the-Web by default in 2022 (Microsoft announcement — https://learn.microsoft.com/en-us/deployoffice/security/internet-macros-blocked), pivoted heavily to OneNote `.one` files that embed HTA/JScript/batch/LNK attachments launched when the victim double-clicks a fake "Open/View" button placed over the embedded object (ATT&CK **T1566.001** delivery — https://attack.mitre.org/techniques/T1566/001/, **T1204.002** execution — https://attack.mitre.org/techniques/T1204/002/). They also leverage **T1204.001 (User Execution: Malicious Link)** (https://attack.mitre.org/techniques/T1204/001/) when the PDF contains a URI that the reader opens in the browser, leading to a drive-by download.
+
+### Advanced Evasion Techniques
 
 Concrete TTPs and the artifacts they leave:
-- **PDF triggers:** the object dictionaries (`/OpenAction`, `/AA`, `/JavaScript`, `/Launch`, `/URI`) and callback URLs persist inside object streams even after compression/encoding; PDFStreamDumper decompresses `/FlateDecode` streams to expose them (tool page — http://sandsprite.com/blogs/index.php?uid=7&pid=57). The `/Launch` action specifically maps to **T1204.002** because it asks the reader to execute an external program.
-- **OneNote payloads:** embedded files are stored as `FileDataStoreObject` blobs per `[MS-ONESTORE]` (https://learn.microsoft.com/en-us/openspecs/office_file_formats/ms-onestore/), so the attachment bytes and original filenames survive on disk and are recoverable with OneNoteAnalyzer (https://github.com/knight0x07/OneNoteAnalyzer) regardless of the decoy image drawn on top.
-- **Execution artifacts:** on detonation you get child processes (`ONENOTE.EXE` → `mshta.exe`/`cmd.exe`/`powershell.exe`), temp-dropped payloads (commonly under `%TEMP%` / `%LOCALAPPDATA%\Temp` and the OneNote cache directory), and outbound C2. Files opened from OneNote attachments are typically written to a temporary OneNote cache/temp directory before launch, giving disk (Sysmon Event ID 11) and process-create (Sysmon Event ID 1) evidence.
-- **Second-stage & persistence:** the LOLBIN commonly pulls a follow-on binary (**T1105 Ingress Tool Transfer** — https://attack.mitre.org/techniques/T1105/) via `certutil`, `bitsadmin`, or PowerShell `Invoke-WebRequest`, then plants a Run-key or Startup-folder entry (**T1547.001** — https://attack.mitre.org/techniques/T1547/001/) for reboot survival. Each leaves a distinct artifact — a `files.log` download, a Sysmon 13 registry write, or a new `.lnk` in the Startup folder — so the "quiet" document delivers a noisy tail.
-- **Evasion:** stream compression and multi-stage encoding to defeat naive keyword grep, decoy images and social-engineering overlays in OneNote, use of signed LOLBINs (`mshta.exe`) to blend with legitimate activity (**T1218.005** — https://attack.mitre.org/techniques/T1218/005/), stripping or avoiding Mark-of-the-Web so downstream scripts run without the macro/HTA block (**T1553 / MOTW abuse** context — https://learn.microsoft.com/en-us/deployoffice/security/internet-macros-blocked), and abuse of the reserved-looking or newly registered domains for callbacks.
+- **PDF triggers:** the object dictionaries (`/OpenAction`, `/AA`, `/JavaScript`, `/Launch`, `/URI`) and callback URLs persist inside object streams even after compression/encoding; PDFStreamDumper decompresses `/FlateDecode` streams to expose them (tool page — http://sandsprite.com/blogs/index.php?uid=7&pid=57). The `/Launch` action specifically maps to **T1204.002** because it asks the reader to execute an external program. Attackers may also embed obfuscated JavaScript that uses **T1027.006 (HTML Smuggling)** (https://attack.mitre.org/techniques/T1027/006/) to construct a binary payload from base64-encoded chunks and write it to disk via a `Blob` + `URL.createObjectURL` trick — the PDF stream contains the base64 data, and PDFStreamDumper's hex view can reveal the encoded blob if the raw bytes are not compressed.
+- **OneNote payloads:** embedded files are stored as `FileDataStoreObject` blobs per `[MS-ONESTORE]` (https://learn.microsoft.com/en-us/openspecs/office_file_formats/ms-onestore/), so the attachment bytes and original filenames survive on disk and are recoverable with OneNoteAnalyzer (https://github.com/knight0x07/OneNoteAnalyzer) regardless of the decoy image drawn on top. Attackers often hide the embedded file by setting its position behind a large image, but OneNoteAnalyzer extracts all objects regardless of visual layering.
+- **Execution artifacts:** on detonation you get child processes (`ONENOTE.EXE` → `mshta.exe`/`cmd.exe`/`powershell.exe`), temp-dropped payloads (commonly under `%TEMP%` / `%LOCALAPPDATA%\Temp` and the OneNote cache directory), and outbound C2. Files opened from OneNote attachments are typically written to a temporary OneNote cache/temp directory before launch, giving disk (Sysmon Event ID 11) and process-create (Sysmon Event ID 1) evidence. PDF JavaScript exploitation leaves artifacts such as `AcroRd32.exe` spawning `cmd.exe` or `wscript.exe`, and possibly temporary files created by the script (e.g., a dropped `.exe` under `%TEMP%`).
+- **Second-stage & persistence:** the LOLBIN commonly pulls a follow-on binary (**T1105 Ingress Tool Transfer** — https://attack.mitre.org/techniques/T1105/) via `certutil`, `bitsadmin`, or PowerShell `Invoke-WebRequest`, then plants a Run-key or Startup-folder entry (**T1547.001** — https://attack.mitre.org/techniques/T1547/001/) for reboot survival. Each leaves a distinct artifact — a `files.log` download, a Sysmon 13 registry write, or a new `.lnk` in the Startup folder — so the "quiet" document delivers a noisy tail. Attackers may also use **T1564.001 (Hide Artifacts: Hidden Files and Directories)** (https://attack.mitre.org/techniques/T1564/001/) to hide the dropped payload by setting the `Hidden` attribute, which can be detected by Sysmon Event ID 11 (file path includes `;` or `+H` property).
+- **Evasion:** stream compression and multi-stage encoding to defeat naive keyword grep, decoy images and social-engineering overlays in OneNote, use of signed LOLBINs (`mshta.exe`) to blend with legitimate activity (**T1218.005** — https://attack.mitre.org/techniques/T1218/005/), stripping or avoiding Mark-of-the-Web so downstream scripts run without the macro/HTA block (**T1553 / MOTW abuse** context — https://learn.microsoft.com/en-us/deployoffice/security/internet-macros-blocked), and abuse of the reserved-looking or newly registered domains for callbacks. Additionally, PDFs may use `/AA` actions that only fire on specific events (e.g., `PageOpen`) to avoid detection by sandboxes that only simulate document opening.
+- **Advanced injection:** attackers sometimes embed shellcode within PDF JavaScript that injects into a running process (e.g., `AcroRd32.exe` injects into `explorer.exe`). This maps to **T1055.012 (Process Injection: Shellcode Injection)** (https://attack.mitre.org/techniques/T1055/012/). The shellcode is typically encoded in the PDF stream; PDFStreamDumper's hex view can reveal the `\x90\x90`, `\xcc`, or `\xeb` patterns indicative of shellcode.
+- **Scheduled task persistence:** after the initial payload runs, attackers frequently use **T1053.005 (Scheduled Task/Job: Scheduled Task)** (https://attack.mitre.org/techniques/T1053/005/) to establish persistence with a task that downloads and executes a payload at a set interval. The task creation appears in Windows Event Log 4698, and the task XML may be stored in `%SYSTEMROOT%\Tasks\`. This artifact is recoverable via forensic tools even if the task is deleted after execution.
 
 PDFStreamDumper and OneNoteAnalyzer surface exactly those hidden components, so the same weaponization that fools a user becomes a durable forensic trail.
 
@@ -106,84 +119,23 @@ Expected: the output folder contains `open_me.txt`. Sample sha256: `9b540c701e13
 
 ## MITRE ATT&CK & DFIR phase
 - **T1566.001** — Phishing: Spearphishing Attachment (delivery vector) — https://attack.mitre.org/techniques/T1566/001/
+- **T1566.002** — Phishing: Spearphishing Link (when the document contains a URI call to a malicious site) — https://attack.mitre.org/techniques/T1566/002/
 - **T1204.002** — User Execution: Malicious File (victim opens the document) — https://attack.mitre.org/techniques/T1204/002/
+- **T1204.001** — User Execution: Malicious Link (when the PDF/OneNote triggers a browser navigation to a malicious URL) — https://attack.mitre.org/techniques/T1204/001/
 - **T1027** — Obfuscated Files or Information (compressed/encoded PDF streams, embedded OneNote blobs) — https://attack.mitre.org/techniques/T1027/
+- **T1027.006** — Obfuscated Files or Information: HTML Smuggling (PDF JavaScript constructs payload from base64) — https://attack.mitre.org/techniques/T1027/006/
 - **T1059.001** — Command and Scripting Interpreter: PowerShell (follow-on execution) — https://attack.mitre.org/techniques/T1059/001/
 - **T1059.003** — Command and Scripting Interpreter: Windows Command Shell (follow-on execution) — https://attack.mitre.org/techniques/T1059/003/
 - **T1218.005** — System Binary Proxy Execution: Mshta (LOLBIN launched from a weaponized OneNote) — https://attack.mitre.org/techniques/T1218/005/
 - **T1105** — Ingress Tool Transfer (second-stage download observed in http.log/files.log) — https://attack.mitre.org/techniques/T1105/
 - **T1547.001** — Boot or Logon Autostart Execution: Registry Run Keys / Startup Folder (post-execution persistence) — https://attack.mitre.org/techniques/T1547/001/
+- **T1564.001** — Hide Artifacts: Hidden Files and Directories (evasion via hidden attributes on dropped payloads) — https://attack.mitre.org/techniques/T1564/001/
+- **T1053.005** — Scheduled Task/Job: Scheduled Task (persistence via schtasks) — https://attack.mitre.org/techniques/T1053/005/
+- **T1055.012** — Process Injection: Shellcode Injection (document-launched shellcode) — https://attack.mitre.org/techniques/T1055/012/
 - **DFIR phase:** Identification and Examination — static triage and IOC extraction of a suspected malicious document prior to (or in place of) dynamic detonation. (Aligned with SANS FOR610 document-analysis workflow — https://www.sans.org/cyber-security-courses/reverse-engineering-malware-malware-analysis-tools-techniques/.)
 
-
-### Essential Commands & Features
-
-To deepen analysis of malicious PDFs, leverage these **undocumented or underused** features in **PDFStreamDumper** (v2023.01 or later):
-
-1. **`/AA` (Additional Actions) Extraction**
-   Use to uncover **JavaScript triggers** (e.g., `OpenAction`, `PageOpen`) that execute on document events. These often align with **T1203 (Exploitation for Client Execution)** or **T1548.001 (Abuse Elevation Control Mechanism: Setuid and Setgid)**.
-   ```cmd
-   pdfsd.exe -file "malicious.pdf" -extract /AA -out "output_aa.txt"
-   ```
-   *When to use*: Suspected **event-driven execution** (e.g., auto-run scripts on document open).
-
-2. **`/URI` Resource Extraction**
-   Extract **embedded URLs** (e.g., phishing links, C2 callbacks) tied to **T1598 (Phishing for Information)**.
-   ```cmd
-   pdfsd.exe -file "malicious.pdf" -extract /URI -out "uris.txt"
-   ```
-   *When to use*: Investigating **external resource abuse** (e.g., drive-by downloads, credential harvesting).
-
-3. **Batch Export for Bulk Analysis**
-   Process **entire directories** of PDFs to extract streams/objects (e.g., `/JS`, `/EmbeddedFiles`) for triage.
-   ```cmd
-   pdfsd.exe -dir "C:\samples\" -batch -extract /JS -out "batch_js_output"
-   ```
-   *When to use*: **Large-scale hunting** (e.g., SOC triage, malware campaigns).
-
-**Authoritative Sources**:
-- [PDF Association: PDF Specification (ISO 32000-2)](https://www.pdfa.org/pdf-specification-index/)
-- [NIST SP 800-172 (Enhanced Security Requirements for Controlled Unclassified Information)](https://csrc.nist.gov/publications/detail/sp/800-172/final) (See Section 3.14 for PDF threats)
-
-### Threat Hunting & Detection Engineering
-To detect malicious Office PDFs, threat hunters can focus on identifying suspicious activity related to [T1625: Kernel-mode Rootkits](https://attack.mitre.org/techniques/T1625) and [T1497: Defacement](https://attack.mitre.org/techniques/T1497). Monitoring Windows Event ID 4688 for unusual process creation, particularly those involving `winword.exe` or `excel.exe`, can help identify potential exploitation. Analyzing Zeek logs for HTTP requests with suspicious User-Agent headers or unusual PDF downloads can also indicate malicious activity. Threat hunters can pivot on these findings by investigating related network connections, examining system logs for signs of privilege escalation, and inspecting file system modifications. Additionally, monitoring for unusual registry modifications, such as changes to the `HKEY_CLASSES_ROOT` hive, can indicate attempts to establish persistence. For more information on threat hunting and detection engineering, see the [Cybersecurity and Infrastructure Security Agency (CISA) website](https://www.cisa.gov/) and the [National Institute of Standards and Technology (NIST) Special Publication 800-53](https://csrc.nist.gov/publications/detail/sp/800-53/revison/5/final).
-
-
-### Essential Commands & Features
-While the module introduces PDFStreamDumper’s basic parsing, three powerful features enable deeper forensic analysis of malicious PDFs. **Stream carving** (`-s`) isolates all embedded streams (e.g., JavaScript, executables) as separate files for independent inspection. Use when you suspect obfuscated payloads hidden in streams:  
-`pdfstreamdumper -s suspect.pdf /output/streams/`  
-This command extracts every stream object, useful for identifying dropped binaries or encoded scripts (cited as [T1204.001](https://attack.mitre.org/techniques/T1204/001/) *User Execution: Malicious File*).
-
-**Object filtering** (`-f`) narrows output to specific object numbers or types, ideal for isolating suspicious or unusually large objects in a complex document. Example:  
-`pdfstreamdumper -f /obj=3,0 suspect.pdf`  
-This shows only object 3 generation 0, allowing focused analysis of embedded content often used for initial access (e.g., [T1566.002](https://attack.mitre.org/techniques/T1566/002/) *Phishing: Spearphishing Link*).
-
-**Raw hex view** (accessible via `-x` or within interactive mode) displays the uninterpreted hexadecimal of any object or stream, crucial for detecting encoded scripts, shellcode, or hidden metadata that rendered view obscures. Use:  
-`pdfstreamdumper -x suspect.pdf -f /obj=5,0`  
-This outputs raw hex of object 5, enabling analysis of encoded payloads that bypass string-based detection.
-
-For further reading:
-- [NCSC Guide on Analysing Malicious PDFs](https://www.ncsc.gov.uk/guidance/malicious-pdf-analysis)
-- [CIS Benchmarks for PDF Security](https://www.cisecurity.org/benchmark/pdf)
-
-### Adversary Emulation & Red-Team Perspective
-
-From a red-team perspective, malicious Office and PDF files are a staple for initial access, leveraging **T1203 (Exploitation for Client Execution)** and **T1564.001 (Hide Artifacts: Hidden Files and Directories)** to bypass defenses. Attackers embed malicious macros (e.g., VBA or Excel 4.0) or JavaScript in PDFs, often using **T1027.006 (Obfuscated Files or Information: HTML Smuggling)** to evade static analysis. For example, a PDF might exploit **CVE-2023-21608** (Adobe Reader U3D memory corruption) to execute shellcode, while an Office document could use **T1204.002 (User Execution: Malicious File)** to trick users into enabling macros, dropping a payload via **T1105 (Ingress Tool Transfer)**.
-
-Artifacts include:
-- **Office**: Temporary files (`~$*.docx`), macro streams in OLE objects, and registry keys (e.g., `HKCU\Software\Microsoft\Office\<version>\Word\Security\Trusted Documents`).
-- **PDF**: Suspicious JavaScript streams (e.g., `/JS` or `/OpenAction`), embedded executables (e.g., `/Launch`), and anomalous cross-reference tables.
-
-Evasion tactics involve:
-- **Obfuscation**: XOR-encoded payloads, junk code, or split strings (e.g., `"p" & "o" & "w" & "e" & "r" & "s" & "h" & "e" & "l" & "l"`).
-- **Living-off-the-Land**: Using `mshta.exe` or `certutil.exe` to decode payloads (e.g., `certutil -decode`).
-- **Timing Delays**: Sleep functions or scheduled tasks to bypass sandbox analysis.
-
-**Sources**:
-- [CVE-2023-21608 Exploit Analysis (Qualys)](https://blog.qualys.com/vulnerabilities-threat-research/2023/01/10/adobe-reader-cve-2023-21608)
-- [Red Team Notes: Office & PDF Tradecraft (ired.team)](https://www.ired.team/offensive-security/initial-access/phishing-with-malicious-office-documents)
-
 ## Sources
+
 Claim → source mapping (all URLs are real, authoritative pages):
 
 - FLARE-VM tool set, Chocolatey-based install, and package manifest (Mandiant/Google) — https://github.com/mandiant/flare-vm
@@ -192,42 +144,32 @@ Claim → source mapping (all URLs are real, authoritative pages):
 - PDF structure, action/trigger keywords (`/OpenAction`, `/AA`, `/JavaScript`, `/JS`, `/Launch`, `/URI`), and stream compression nuance — Didier Stevens PDF tools & analysis — https://blog.didierstevens.com/programs/pdf-tools/
 - OneNote on-disk format, `FileDataStoreObject` embedded-file storage (`[MS-ONESTORE]`) — https://learn.microsoft.com/en-us/openspecs/office_file_formats/ms-onestore/
 - Microsoft default VBA-macro blocking (MOTW / `Zone.Identifier`, 2022) driving the pivot to OneNote lures — https://learn.microsoft.com/en-us/deployoffice/security/internet-macros-blocked
-- Sysmon process-create (Event ID 1), file-create (Event ID 11), and registry-set (Event ID 13) telemetry used for detection — https://learn.microsoft.com/en-us/sysinternals/downloads/sysmon
+- Sysmon process-create (Event ID 1), file-create (Event ID 11), file-stream-create (Event ID 15), and registry-set (Event ID 13) telemetry used for detection — https://learn.microsoft.com/en-us/sysinternals/downloads/sysmon
 - SANS FOR610 / Malware Analysis — document analysis workflow — https://www.sans.org/cyber-security-courses/reverse-engineering-malware-malware-analysis-tools-techniques/
-- MITRE ATT&CK: T1566.001 — https://attack.mitre.org/techniques/T1566/001/
-- MITRE ATT&CK: T1204.002 — https://attack.mitre.org/techniques/T1204/002/
-- MITRE ATT&CK: T1027 — https://attack.mitre.org/techniques/T1027/
-- MITRE ATT&CK: T1059.001 — https://attack.mitre.org/techniques/T1059/001/
-- MITRE ATT&CK: T1059.003 — https://attack.mitre.org/techniques/T1059/003/
-- MITRE ATT&CK: T1218.005 (Mshta) — https://attack.mitre.org/techniques/T1218/005/
-- MITRE ATT&CK: T1105 (Ingress Tool Transfer) — https://attack.mitre.org/techniques/T1105/
-- MITRE ATT&CK: T1547.001 (Registry Run Keys / Startup Folder) — https://attack.mitre.org/techniques/T1547/001/
 - Security Onion documentation (Hunt/Alerts, Suricata) — https://docs.securityonion.net/en/2.4/suricata.html
 - Security Onion documentation (Zeek) — https://docs.securityonion.net/en/2.4/zeek.html
 - Zeek `files.log` field reference (sha256/mime_type/filename) — https://docs.zeek.org/en/master/logs/files.html
 - Zeek `dns.log` field reference (query/answers) — https://docs.zeek.org/en/master/logs/dns.html
 - IANA reserved / documentation domains (`example.com` never resolves; RFC 2606 / RFC 6761) — https://www.iana.org/domains/reserved
+- MITRE ATT&CK: T1053.005 (Scheduled Task) — https://attack.mitre.org/techniques/T1053/005/
+- MITRE ATT&CK: T1055.012 (Process Injection: Shellcode Injection) — https://attack.mitre.org/techniques/T1055/012/
+- MITRE ATT&CK: T1566.001 — https://attack.mitre.org/techniques/T1566/001/
+- MITRE ATT&CK: T1566.002 — https://attack.mitre.org/techniques/T1566/002/
+- MITRE ATT&CK: T1204.002 — https://attack.mitre.org/techniques/T1204/002/
+- MITRE ATT&CK: T1204.001 — https://attack.mitre.org/techniques/T1204/001/
+- MITRE ATT&CK: T1027 — https://attack.mitre.org/techniques/T1027/
+- MITRE ATT&CK: T1027.006 — https://attack.mitre.org/techniques/T1027/006/
+- MITRE ATT&CK: T1059.001 — https://attack.mitre.org/techniques/T1059/001/
+- MITRE ATT&CK: T1059.003 — https://attack.mitre.org/techniques/T1059/003/
+- MITRE ATT&CK: T1218.005 (Mshta) — https://attack.mitre.org/techniques/T1218/005/
+- MITRE ATT&CK: T1105 (Ingress Tool Transfer) — https://attack.mitre.org/techniques/T1105/
+- MITRE ATT&CK: T1547.001 (Registry Run Keys / Startup Folder) — https://attack.mitre.org/techniques/T1547/001/
+- MITRE ATT&CK: T1564.001 (Hide Artifacts: Hidden Files and Directories) — https://attack.mitre.org/techniques/T1564/001/
 
 ## Related modules
-- [Static reverse engineering](../12-static-re/README.md) -- same learning path (Windows RE); apply static triage skills to native PE binaries dropped by these documents.
-- [Dynamic debugging](../13-dynamic-debugging/README.md) -- same learning path (Windows RE); step through a payload once static analysis identifies it.
-- [NET reverse engineering](../14-dotnet-re/README.md) -- same learning path (Windows RE); many OneNote-delivered stagers are .NET assemblies.
-- [Behavioral / dynamic analysis](../15-behavioral-dynamic/README.md) -- same learning path (Windows RE); detonate the extracted payload in an instrumented sandbox to confirm the C2 and persistence artifacts predicted by static analysis.
+- [Static reverse engineering](../12-static-re/README.md) — same learning path (Windows RE); apply static triage skills to native PE binaries dropped by these documents.
+- [Dynamic debugging](../13-dynamic-debugging/README.md) — same learning path (Windows RE); step through a payload once static analysis identifies it.
+- [NET reverse engineering](../14-dotnet-re/README.md) — same learning path (Windows RE); many OneNote-delivered stagers are .NET assemblies.
+- [Behavioral / dynamic analysis](../15-behavioral-dynamic/README.md) — same learning path (Windows RE); detonate the extracted payload in an instrumented sandbox to confirm the C2 and persistence artifacts predicted by static analysis.
 
-<!-- cyberlab-enriched: v2 -->
-- https://www.pdfa.org/pdf-specification-index/
-- https://csrc.nist.gov/publications/detail/sp/800-172/final
-- https://attack.mitre.org/techniques/T1625
-- https://attack.mitre.org/techniques/T1497
-- https://www.cisa.gov/
-- https://csrc.nist.gov/publications/detail/sp/800-53/revison/5/final
-
-<!-- cyberlab-enriched: v3 -->
-- https://attack.mitre.org/techniques/T1204/001/
-- https://attack.mitre.org/techniques/T1566/002/
-- https://www.ncsc.gov.uk/guidance/malicious-pdf-analysis
-- https://www.cisecurity.org/benchmark/pdf
-- https://blog.qualys.com/vulnerabilities-threat-research/2023/01/10/adobe-reader-cve-2023-21608
-- https://www.ired.team/offensive-security/initial-access/phishing-with-malicious-office-documents
-
-<!-- cyberlab-enriched: v4 -->
+<!-- cyberlab-enriched: v5 -->
