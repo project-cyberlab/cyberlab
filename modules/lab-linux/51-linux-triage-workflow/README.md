@@ -282,6 +282,51 @@ Analysts often make critical mistakes during host triage that lead to false nega
 - **T1564 Hide Artifacts** — Artifacts hidden in slack/unallocated space or via timestomping. [Source](https://attack.mitre.org/techniques/T1564/)
 - **DFIR phases:** Identification (`mmls`/`fsstat`), Examination (`fls`/`icat`/`bulk_extractor`), Analysis (`clamscan` + indicator correlation) — consistent with SANS DFIR process material. [Source](https://www.sans.org/posters/)
 
+
+### Essential Commands & Features
+
+While core triage commands like `fls` and `mmls` are covered, **The Sleuth Kit (TSK)** offers powerful utilities for bulk extraction and signature-based hunting that are often overlooked. Below are the most impactful commands for rapid forensic analysis, with concrete examples and tactical use cases.
+
+#### **1. `tsk_recover` – Bulk File Extraction**
+Extract all recoverable files from a forensic image to a designated directory. Critical for **T1562.001 (Indicator Removal: Clear Windows Event Logs)** or **T1074.001 (Data Staged: Local Data Staging)**, where adversaries hide artifacts in slack space or deleted files.
+```bash
+tsk_recover -a /evidence/disk.img /output/recovered_files/
+```
+- **`-a`**: Recover *all* files (allocated + unallocated).
+- **Use when**: You need to quickly preserve evidence before deeper analysis or when hunting for staged exfiltration data.
+
+#### **2. `hfind` – Hash Lookup (NSRL or Custom)**
+Compare file hashes against known-good (NSRL) or custom hashsets (e.g., IOCs). Vital for detecting **T1036.005 (Masquerading: Match Legitimate Name or Location)** or **T1553.002 (Subvert Trust Controls: Code Signing)**.
+```bash
+hfind -i nsrl-md5 /evidence/hashes.txt
+```
+- **`-i nsrl-md5`**: Use NSRL’s MD5 hashset (pre-downloaded).
+- **Use when**: Triaging large datasets for known malware or unauthorized software.
+
+#### **3. `sigfind` – Signature-Based Carving**
+Search for byte signatures (e.g., file headers) in raw disk data. Essential for **T1127 (Trusted Developer Utilities Proxy Execution)** or **T1027.001 (Obfuscated Files or Information: Binary Padding)**.
+```bash
+sigfind -b 512 -o 0x00 -t "JFIF" /evidence/disk.img
+```
+- **`-b 512`**: Block size (adjust for filesystem).
+- **`-o 0x00`**: Offset (0x00 for start of sector).
+- **`-t "JFIF"`**: Target signature (e.g., JPEG files).
+- **Use when**: Recovering fragmented files or hunting for embedded payloads.
+
+**Authoritative Sources**:
+- [TSK Official Documentation: `tsk_recover`](https://www.sleuthkit.org/sleuthkit/man/tsk_recover.1.html)
+- [SANS FOR500: Advanced Digital Forensics](https://
+
+### Threat Hunting & Detection Engineering
+
+Once triage has identified suspicious Linux artifacts, shift to proactive threat hunting and detection engineering. Focus on **T1560.001 Archive Collected Data: Archive via Utility** and **T1059.006 Command and Scripting Interpreter: Python**. Hunt for `tar`, `gzip`, or `zip` processes invoked with `-czf` or `-cvf` flags that compress `/home/*/.ssh`, `/var/log`, or `/etc` directories—common targets for exfiltration staging (T1560.001). Use `auditd` logs (`type=EXECVE` with `a0=tar` or `a0=gzip`) or `sysmon-linux` Event ID 1 (Process Creation) with `Image` fields matching these utilities.
+
+For T1059.006, detect Python scripts executing base64-encoded commands via `python3 -c` or `python -c` followed by `exec(base64.b64decode(` in process arguments. Pivot on `ptrace` syscalls (`strace` or `auditd` logs) where Python processes attach to other processes (e.g., `PTRACE_ATTACH`), a technique used for credential dumping or code injection. Leverage Zeek’s `conn.log` to correlate high-volume outbound connections from these processes to unusual external IPs, filtering on `id.orig_h` and `id.resp_p` (e.g., non-standard ports like 8443/tcp).
+
+**Sources:**
+- [Linux Audit Framework Documentation (Red Hat)](https://access.redhat.com/documentation/en-us/red_hat_enterprise_linux/8/html/security_hardening/auditing-the-system_security-hardening)
+- [Sysmon for Linux (Microsoft Threat Intelligence)](https://www.microsoft.com/en-us/security/blog/2021/08/10/sysmon-for-linux-now-available-for-public-preview/)
+
 ## Sources
 **Claim → Source Mapping (all URLs are official/authoritative):**
 
@@ -343,3 +388,7 @@ Analysts often make critical mistakes during host triage that lead to false nega
 - [Memory forensics](../02-memory-forensics/README.md) -- shares `bulk_extractor` for feature carving from memory images.
 
 <!-- cyberlab-enriched: v3 -->
+- https://www.sleuthkit.org/sleuthkit/man/tsk_recover.1.html
+- https://www.microsoft.com/en-us/security/blog/2021/08/10/sysmon-for-linux-now-available-for-public-preview/
+
+<!-- cyberlab-enriched: v4 -->
