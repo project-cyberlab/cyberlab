@@ -212,6 +212,61 @@ Once you’ve loaded a .NET assembly in **dnSpyEx**, these **undemonstrated** de
 ### Threat Hunting & Detection Engineering
 To detect and hunt threats related to .NET deobfuscation, focus on monitoring Windows Event IDs 4688 (Process Creation) and 4703 (Token Elevation Type) for suspicious process execution and elevation patterns. Analyze the `CommandLine` field for potential deobfuscation tool usage, such as invoking `csc.exe` or `vbc.exe` with unusual arguments. Additionally, inspect Zeek's `http` log for suspicious download activity, particularly focusing on the `User-Agent` field for non-standard or empty values. Threat hunters can pivot on these findings by investigating related techniques, such as [T1620: Reflective Code Loading](https://attack.mitre.org/techniques/T1620/) and [T1646: Netsh Helper DLL](https://attack.mitre.org/techniques/T1646/), which may indicate an adversary's attempt to execute code in memory or manipulate network settings. For further guidance on threat hunting and detection engineering, refer to the Cyber and Infrastructure Security Agency's (CISA) [Alert (AA20-133A)](https://us-cert.cisa.gov/ncas/alerts/aa20-133a) and the National Institute of Standards and Technology's (NIST) [Special Publication 800-150](https://nvlpubs.nist.gov/nistpubs/SpecialPublications/NIST.SP.800-150.pdf).
 
+
+### Essential Commands & Features
+
+Once you’ve loaded a .NET assembly in **dnSpyEx**, these **undemonstrated** debugging and patching features are critical for deep analysis and adversary emulation:
+
+#### **Debugging: Breakpoints & Step-Through**
+- **Set a breakpoint on a method** (e.g., `Main`):
+  Right-click the method → *Breakpoint* → *Insert Breakpoint*. Use this to pause execution at key entry points (e.g., decryption routines).
+  *Example*: Debugging a **T1071.001 (Application Layer Protocol: Web Protocols)** C2 callback in a malicious implant.
+- **Step into/over IL instructions**:
+  Press `F11` (step into) or `F10` (step over) during debugging to trace execution flow. Essential for analyzing **T1102.002 (Web Service: Bidirectional Communication)** where malware dynamically fetches payloads.
+
+#### **Assembly Editing: Patching IL/Methods**
+- **Edit IL directly**:
+  Right-click a method → *Edit Method (C#/IL)* → Modify IL instructions (e.g., replace `call` with `nop` to bypass checks). Use this to neutralize anti-analysis (e.g., **T1622 (Debugger Evasion)**).
+  *Example*:
+  ```il
+  // Original (checks for debugger)
+  call System.Diagnostics.Debugger::IsAttached
+  brfalse.s continue
+  call System.Environment::Exit
+  // Patched (nop the check)
+  nop
+  nop
+  nop
+  ```
+- **Save patched assembly**:
+  *File* → *Save Module* → Choose *Save All*. Use this to create "clean" samples for sandbox testing or YARA rule development.
+
+**When to use these**:
+- Debugging: Trace obfuscated control flow (e.g., **T1027.009 (Obfuscated Files or Information: Embedded Payloads)**).
+- Patching: Disable anti-VM checks or modify hardcoded C2 domains (e.g., **T1568.002 (Dynamic Resolution: Domain Generation Algorithms)**).
+
+**Sources**:
+- [dnSpyEx GitHub: Debugging & Editing Guide](https://github.com/dnSpyEx/dnSpy/wiki/Debugging-and-Editing)
+- [Mandiant .NET Malware Analysis Techniques](https://www.mandiant.com/resources/blog/net-malware-analysis)
+
+### Adversary Emulation & Red-Team Perspective
+
+From an adversary’s perspective, .NET deobfuscation (e.g., via **dnSpy**, **ILSpy**, or **de4dot**) is a critical post-exploitation step to analyze and repurpose compiled malware or legitimate applications. Attackers leverage deobfuscated code to **modify payloads** (e.g., embedding C2 logic or backdoors) or **extract hardcoded credentials/secrets** (e.g., API keys, encryption keys) for lateral movement. A common tactic is **reflective code loading** ([T1620: Reflective Code Loading](https://attack.mitre.org/techniques/T1620/)), where deobfuscated assemblies are injected into memory without touching disk, evading traditional AV/EDR. For persistence, attackers may **hijack .NET application domains** ([T1574.011: Hijack Execution Flow: Services Registry Permissions Weakness](https://attack.mitre.org/techniques/T1574/011/)) by replacing legitimate DLLs with trojanized, deobfuscated versions.
+
+**Artifacts left behind** include:
+- **Modified IL metadata** (e.g., stripped obfuscation attributes like `ObfuscatedByGoliath`).
+- **Temporary files** (e.g., `*.il` or `*.cs` dumps from decompilers).
+- **Process memory anomalies** (e.g., `dnSpy.exe` or `de4dot.exe` parent processes spawning `csc.exe` for recompilation).
+
+**Evasion considerations**:
+- Use **in-memory deobfuscation** (e.g., via `Assembly.Load()`) to avoid disk artifacts.
+- **Re-obfuscate** modified payloads with tools like **ConfuserEx** to hinder forensic analysis.
+- **Time-delayed execution** (e.g., `Thread.Sleep`) to bypass behavioral detections.
+
+**Authoritative Sources**:
+- [FireEye: .NET Malware Analysis with dnSpy](https://www.fireeye.com/blog/threat-research/2019/08/definitive-dot-net-guide.html)
+- [CrowdStrike: Adversary Tradecraft in .NET](https://www.crowdstrike.com/blog/tech-center/dotnet-malware-analysis/)
+
 ## Sources
 - dnSpyEx project (maintained fork of dnSpy; decompiler/debugger/editor + features): https://github.com/dnSpyEx/dnSpy
 - ILSpy decompiler & `ilspycmd` (console `-o` output, global-tool install): https://github.com/icsharpcode/ILSpy
@@ -262,3 +317,10 @@ To detect and hunt threats related to .NET deobfuscation, focus on monitoring Wi
 - https://nvlpubs.nist.gov/nistpubs/SpecialPublications/NIST.SP.800-150.pdf
 
 <!-- cyberlab-enriched: v3 -->
+- https://github.com/dnSpyEx/dnSpy/wiki/Debugging-and-Editing
+- https://www.mandiant.com/resources/blog/net-malware-analysis
+- https://attack.mitre.org/techniques/T1574/011/
+- https://www.fireeye.com/blog/threat-research/2019/08/definitive-dot-net-guide.html
+- https://www.crowdstrike.com/blog/tech-center/dotnet-malware-analysis/
+
+<!-- cyberlab-enriched: v4 -->
