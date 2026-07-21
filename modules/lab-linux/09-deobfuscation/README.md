@@ -338,6 +338,50 @@ Once deobfuscated, adversarial payloads often reveal patterns that can be hunted
 - [CISA Alert AA22-257A: Malicious Cyber Actors Use PowerShell to Deploy Post-Exploitation Tools](https://www.cisa.gov/uscert/ncas/alerts/aa22-257a)
 - [FireEye Threat Research: Detecting Obfuscated PowerShell in Command Lines](https://www.fireeye.com/blog/threat-research/2019/01/detecting-obfuscated-powershell-in-command-lines.html)
 
+
+### Essential Commands & Features
+
+When deobfuscating adversarial payloads, **CyberChef’s `Magic` operation** (T1140: *Deobfuscate/Decode Files or Information*) is indispensable for automated detection of encoding schemes. Unlike manual trial-and-error, `Magic` analyzes input data and applies a ranked list of operations (e.g., Base64, XOR, AES) to reveal plaintext. **Use it when:** You suspect multi-layered obfuscation (e.g., nested encodings) or lack initial context about the sample.
+
+**Example:**
+```plaintext
+Input: "54686520717569636B2062726F776E20666F78"
+Magic → Output: "The quick brown fox" (auto-detected as hex → ASCII)
+```
+
+For **parallel decoding chains**, leverage **`Fork` and `Merge`** to split input into multiple paths (e.g., testing Base64 *and* ROT13 simultaneously). **Use it when:** Facing polymorphic malware (T1027.010: *Obfuscated Files or Information*) where a single sample may use disparate encoding methods.
+
+**Example:**
+```plaintext
+Input: "SGVsbG8gV29ybGQh"
+Fork → Path 1: From_Base64 → Output: "Hello World!"
+Fork → Path 2: ROT13 → Output: "URyyB Jbeyq!"
+Merge → Compare results to identify valid decoding.
+```
+
+**Key Flags:**
+- `Magic`: Toggle "Recursive" to handle nested layers (e.g., Base64 → Gzip).
+- `Fork`: Right-click a node to "Add fork" and duplicate the input stream.
+
+**Sources:**
+- [CyberChef GitBook: Magic Operation](https://gchq.github.io/CyberChef/#Magic)
+- [MITRE ATT&CK: T1027.010](https://attack.mitre.org/techniques/T1027/010/)
+
+### Adversary Emulation & Red-Team Perspective
+
+From an adversary’s standpoint, deobfuscation is not the end goal—it’s a means to execute malicious payloads undetected. Red teams and attackers leverage obfuscation to bypass static detection (e.g., AV signatures, YARA rules) while ensuring their code remains functional upon execution. A common tactic is **staged payload delivery** (MITRE ATT&CK [T1106](https://attack.mitre.org/techniques/T1106/): *Native API*), where obfuscated scripts (e.g., PowerShell, JavaScript) are decoded in memory using native OS functions like `Invoke-Expression` or `eval()`. This avoids writing deobfuscated artifacts to disk, reducing forensic traces.
+
+Attackers also abuse **command-line obfuscation** (MITRE ATT&CK [T1059.003](https://attack.mitre.org/techniques/T1059/003/): *Windows Command Shell*) to evade logging. For example, they may encode payloads in Base64 or split commands across environment variables, then reassemble them at runtime. Evasion considerations include:
+- **Time-based delays**: Introducing sleeps between deobfuscation and execution to bypass behavioral analysis.
+- **Environmental keying**: Only deobfuscating payloads if specific conditions (e.g., domain-joined systems) are met.
+- **Artifact suppression**: Using `Clear-EventLog` or `reg delete` to remove traces of deobfuscation activity.
+
+Defenders should monitor for anomalous process trees (e.g., `cmd.exe` spawning `powershell.exe` with encoded commands) and inspect memory dumps for deobfuscated strings. Tools like **Sysmon** (Event ID 1) and **Volatility** can reveal in-memory artifacts left by these techniques.
+
+**Sources**:
+- [FireEye: Obfuscation in the Wild (2021)](https://www.fireeye.com/blog/threat-research/2021/03/obfuscation-in-the-wild.html)
+- [CERT-EU: PowerShell Obfuscation (2022)](https://cert.europa.eu/publications/security-advisories/2022-001)
+
 ## Sources
 The following authoritative sources were used to verify all factual claims in this module. Each source is cited inline where applicable.
 
@@ -390,3 +434,11 @@ The following authoritative sources were used to verify all factual claims in th
 - https://www.fireeye.com/blog/threat-research/2019/01/detecting-obfuscated-powershell-in-command-lines.html
 
 <!-- cyberlab-enriched: v4 -->
+- https://gchq.github.io/CyberChef/#Magic
+- https://attack.mitre.org/techniques/T1027/010/
+- https://attack.mitre.org/techniques/T1106/
+- https://attack.mitre.org/techniques/T1059/003/
+- https://www.fireeye.com/blog/threat-research/2021/03/obfuscation-in-the-wild.html
+- https://cert.europa.eu/publications/security-advisories/2022-001
+
+<!-- cyberlab-enriched: v5 -->
