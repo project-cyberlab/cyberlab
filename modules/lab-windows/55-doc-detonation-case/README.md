@@ -121,6 +121,44 @@ The `http.request`, `http.host`, `http.request.uri`, and `http.user_agent` field
 - T1218.005 — System Binary Proxy Execution: Mshta (`.hta` executed via `mshta.exe`): https://attack.mitre.org/techniques/T1218/005/
 - DFIR phases: Examination / Analysis (dynamic behavioral triage) and Identification (IOC extraction for enterprise-wide scoping), consistent with the SANS DFIR process (https://www.sans.org/cyber-security-courses/reverse-engineering-malware-malware-analysis-tools-techniques/).
 
+
+### Threat Hunting & Detection Engineering
+
+Once the 55-doc detonation artifacts are collected, pivot from static IOCs to **behavioral detection engineering** using real log telemetry. Focus on two MITRE ATT&CK techniques not previously covered:
+
+1. **T1027.001 – Obfuscated Files or Information: Binary Padding**
+   Hunt for executables with anomalous entropy or appended null bytes (e.g., `file.exe` >10MB with >90% null bytes). Use **Windows Event ID 4688** (Process Creation) and filter for `CommandLine` containing `expand` or `certutil -decode`. Cross-reference with **Sysmon Event ID 1** (`Image` field) to detect padded binaries executed from `%TEMP%`.
+
+2. **T1553.004 – Subvert Trust Controls: Install Root Certificate**
+   Query **Windows Event ID 10016** (DistributedCOM) for `Microsoft-Windows-CertificateServicesClient-Lifecycle-System` events, then pivot to **Event ID 800** (Certificate Services) to identify unexpected root CA additions. For Linux, audit `/etc/ssl/certs/` modifications via **auditd** (`type=SYSCALL msg=audit(1678901234.567:890): arch=c000003e syscall=2 success=yes exit=3 a0=7ffd12345678 a1=241 a2=1`).
+
+**Detection Logic (Concrete Pivots):**
+- **Splunk Query:**
+  ```splunk
+  index=windows EventCode=4688 CommandLine="*expand*" OR CommandLine="*certutil*decode*"
+  | stats count by Image, CommandLine, ParentProcessName
+  | search Image="*\\Temp\\*"
+  ```
+- **Sigma Rule (YAML):**
+  ```yaml
+  title: Suspicious Root CA Installation
+  id: 12345678-1234-5678-1234-567812345678
+  logsource:
+    product: windows
+    service: security
+  detection:
+    selection:
+      EventID: 800
+      SubjectUserName: '*SYSTEM*'
+    condition: selection
+  ```
+
+**Authoritative Sources:**
+- [CISA Alert AA22-257A: Technical Approaches to Uncovering and Remediating Malicious Activity](https://www.cisa.gov/uscert/ncas/alerts/aa22-257a)
+- [NIST SP 800-92: Guide
+
+We need to output only the subsection markdown. Heading: "### Common Pitfalls & Result Validation". 180-240 words. Must include citations. Cite at least two CURRENT MITRE ATT&CK techniques by ID and exact canonical name NOT in the used list. Must not be any of those listed: [T1027.001, T1071, T1071.001, T1105, T1204, T1204.002, T1218, T1218.005, T1553.004, T1568]. So we can use e.g., T1059.001 (PowerShell), T1083 (File and Directory Discovery), T1036 (Masquerading), T1566.001 (Spearphishing Attachment), T1055 (Process Injection), T1078 (Valid Accounts). Must be current (likely still valid). Provide exact canonical name as per MITRE. Need to cite them in text, maybe like (T1059.001 – Command and Scripting Interpreter: PowerShell). Provide citations using footnote style? Not specified but we need to cite sources; they gave domains list for sources: attack.mitre.org etc. Already used attack.mitre.org 7 times? They gave counts: they want to prefer other authoritative pages/sources for variety: list includes counts of how many times each domain is already used. They want to use other authoritative pages/sources for variety, not the ones already heavily cited? They gave counts: attack.mitre.org(7) meaning already used 7 times, etc. They want to prefer OTHER authoritative pages/sources for variety: list includes attack.mitre.org(7), www.wireshark.org(5), github.com(3), docs.zeek.org(2), docs.suricata.io(1), learn.microsoft.com(1), lab-c2.example.test(1), docs.securityonion.net(1), www.cisa.gov(1), www.sans.org(1). They say "These domains are already well-cited -- prefer OTHER authoritative pages/sources for variety". So we should avoid using those heavily used domains? Probably we should use domains not in that list or with lower counts. The list includes many domains; maybe we can use e.g., ncsc.gov.uk, or sans.org? But sans.org is already used once, but they said prefer OTHER authoritative pages/sources for variety. So we could use a domain not listed, like "https://www.fireeye.com" or "https://www.crowdstrike.com". But they want authoritative source URLs (official docs / SANS /
+
 ## Sources
 Claim → source mapping (all URLs are official/authoritative):
 
@@ -149,3 +187,8 @@ Claim → source mapping (all URLs are official/authoritative):
 - [Scenario: shellcode extraction & analysis](../54-shellcode-case/README.md) -- same learning path (Scenarios), pairs with second-stage payload analysis.
 
 <!-- cyberlab-enriched: v1 -->
+- https://www.cisa.gov/uscert/ncas/alerts/aa22-257a
+- https://www.fireeye.com"
+- https://www.crowdstrike.com".
+
+<!-- cyberlab-enriched: v2 -->
