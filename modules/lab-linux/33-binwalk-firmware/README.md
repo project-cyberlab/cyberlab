@@ -163,6 +163,44 @@ Expected: binwalk lists at least a `gzip compressed data` entry and a `JPEG imag
 - **T1070.004** — Indicator Removal: File Deletion (cleaning up extracted/modified files post-exploitation): https://attack.mitre.org/techniques/T1070/004/
 - DFIR phase: **Examination / Analysis** (file triage, extraction, and artifact recovery) — see SANS FOR508: https://www.sans.org/cyber-security-courses/advanced-incident-response-threat-hunting/
 
+
+### Essential Commands & Features
+
+Binwalk’s advanced flags unlock deeper firmware analysis, particularly for embedded malware or obfuscated payloads. Below are the most critical commands for real-world investigations:
+
+- **`-M` (Matryoshka Recursive Scan)**
+  Recursively scans extracted files for nested archives or executables. Use this when firmware contains layered obfuscation (e.g., a squashfs inside a CPIO archive).
+  ```bash
+  binwalk -Me firmware.bin
+  ```
+  *Relevance*: Detects **T1027.001 (Obfuscated Files or Information: Binary Padding)** by uncovering hidden payloads.
+
+- **`-A` (Opcode Scan)**
+  Identifies CPU architecture-specific instructions (e.g., ARM, MIPS). Critical for analyzing embedded malware in IoT firmware.
+  ```bash
+  binwalk -A firmware.bin
+  ```
+  *Relevance*: Helps reverse-engineer **T1542.001 (Pre-OS Boot: System Firmware)** by revealing executable code.
+
+- **`-R` (Custom Signature)**
+  Applies user-defined signatures (e.g., YARA rules) to detect malicious patterns. Create a signature file (`sigfile`) and run:
+  ```bash
+  binwalk -R sigfile firmware.bin
+  ```
+
+- **`--dd` (Custom Extraction)**
+  Extracts files matching specific criteria (e.g., by extension or magic bytes). Example: Extract all ELF binaries:
+  ```bash
+  binwalk --dd='elf:elf' firmware.bin
+  ```
+
+**Sources**:
+- [Binwalk Official Wiki (GitHub)](https://github.com/ReFirmLabs/binwalk/wiki)
+- [Firmware Analysis with Binwalk (Black Hat)](https://www.blackhat.com/docs/us-14/materials/us-14-Ohara-Deconstructing-Firmware-For-Fun-And-Insight-WP.pdf)
+
+### Threat Hunting & Detection Engineering
+To detect potential threats in firmware, focus on monitoring system calls, network traffic, and file system modifications. Analyze Windows Event IDs 4657 and 4663 for suspicious file system access patterns, indicating potential use of **T1588: Obtain Capabilities** and **T1622: Data Encrypted for Impact** techniques. Inspect Zeek logs for unusual DNS queries or HTTP requests that may suggest malicious activity. In Suricata, examine flow logs for signs of command and control (C2) communication. Threat hunters can pivot on unusual process execution, such as unexpected instances of `cmd.exe` or `powershell.exe`, to uncover hidden threats. By monitoring these log sources and fields, defenders can identify and disrupt malicious activity. For more information on threat hunting and detection engineering, visit the Cyber and Infrastructure Security Agency (CISA) website at [https://www.cisa.gov/](https://www.cisa.gov/) and the National Institute of Standards and Technology (NIST) Computer Security Resource Center at [https://csrc.nist.gov/](https://csrc.nist.gov/).
+
 ## Sources
 Claim → source mapping (all URLs are to official/authoritative pages):
 
@@ -211,3 +249,9 @@ Claim → source mapping (all URLs are to official/authoritative pages):
 - [The Sleuth Kit command mastery](../22-sleuthkit-mastery/README.md) -- same learning path (Deep-dives); filesystem-aware carving and metadata analysis.
 
 <!-- cyberlab-enriched: v2 -->
+- https://github.com/ReFirmLabs/binwalk/wiki
+- https://www.blackhat.com/docs/us-14/materials/us-14-Ohara-Deconstructing-Firmware-For-Fun-And-Insight-WP.pdf
+- https://www.cisa.gov/](https://www.cisa.gov/
+- https://csrc.nist.gov/](https://csrc.nist.gov/
+
+<!-- cyberlab-enriched: v3 -->
