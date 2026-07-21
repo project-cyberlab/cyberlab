@@ -101,6 +101,10 @@ Concrete detection logic and Security Onion pivots:
 
 Findings map to MITRE ATT&CK **T1027** (Obfuscated Files or Information, https://attack.mitre.org/techniques/T1027/), **T1059.003** (Windows Command Shell, https://attack.mitre.org/techniques/T1059/003/), **T1105** (Ingress Tool Transfer, https://attack.mitre.org/techniques/T1105/), **T1140** (Deobfuscate/Decode Files or Information, https://attack.mitre.org/techniques/T1140/), and **T1071.001** (Web Protocols C2, https://attack.mitre.org/techniques/T1071/001/), and feed IOCs (domains, hashes) back into Security Onion for retroactive hunting across PCAP and endpoint logs.
 
+Additional MITRE ATT&CK techniques:
+- **T1041** (Data Manipulation): Often used in .NET malware to manipulate or exfiltrate data from memory or files. This could involve modifying or encrypting files before exfiltration.
+- **T1036.001** (Masquerading - File and Directory Proxies): Malware may rename or hide files using obfuscation techniques, making it harder to detect.
+
 ## Attacker perspective
 Attackers favor .NET because it enables fast development, in-memory `Assembly.Load` execution, and easy trojanizing of legitimate managed apps. `Assembly.Load`/`Assembly.Load(byte[])` reflective loading is a documented technique for running managed payloads without touching disk (Microsoft Learn: https://learn.microsoft.com/en-us/dotnet/api/system.reflection.assembly.load), corresponding to MITRE ATT&CK **T1620** (Reflective Code Loading, https://attack.mitre.org/techniques/T1620/).
 
@@ -115,6 +119,10 @@ The artifacts left behind for defenders are rich and concrete:
 - After execution: .NET assembly-load and JIT-compiled modules visible in memory, and image-load/process-create telemetry (Sysmon Event IDs 7 and 1: https://learn.microsoft.com/en-us/sysinternals/downloads/sysmon).
 
 Evasion: reflective in-memory loading avoids on-disk extraction, dynamic API resolution defeats simple string greps, and layered obfuscation (control-flow flattening plus per-string encryption) can leave de4dot unable to statically decrypt — which is exactly why the dnSpyEx debugger (step 5) is used to observe decrypted values at runtime in an isolated lab.
+
+Additional evasion techniques:
+- **T1027.009** (Embedded Payloads): Attackers may embed payloads within the .NET assembly, which can be difficult to detect without decompiling and analyzing the code. This technique is used to avoid detection by hiding malicious code within legitimate-looking binaries.
+- **T1040** (Compromise Accounts): Attackers may use .NET to implement credential theft or impersonation logic, which can be used to compromise accounts and move laterally within a network.
 
 ## Answer key
 Sample sha256: `c202132094ab6252e24cea84eac4579de6c57f2338ac58db7eafc526a0e5e84b`
@@ -148,6 +156,8 @@ Expected: de4dot reports `Detected Unknown obfuscator` (this benign sample is un
 - **T1105** — Ingress Tool Transfer (`WebClient`/`DownloadString` staging): https://attack.mitre.org/techniques/T1105/
 - **T1140** — Deobfuscate/Decode Files or Information (`FromBase64String` decoding): https://attack.mitre.org/techniques/T1140/
 - **T1620** — Reflective Code Loading (`Assembly.Load(byte[])`): https://attack.mitre.org/techniques/T1620/
+- **T1041** — Data Manipulation (used in .NET malware to manipulate or exfiltrate data from memory or files): https://attack.mitre.org/techniques/T1041/
+- **T1036.001** — Masquerading - File and Directory Proxies (used in .NET malware to rename or hide files using obfuscation techniques): https://attack.mitre.org/techniques/T1036/001/
 - **DFIR phase:** Examination / Analysis (static reverse engineering of an extracted artifact), feeding Identification of IOCs.
 
 > Note on prior text: the earlier "T1027.009" reference was corrected — T1027.009 is *Embedded Payloads* on MITRE ATT&CK. The packing/string-encryption behavior described here is captured by **T1027.002 (Software Packing)**; embedded-payload behavior, where present, would be **T1027.009** (https://attack.mitre.org/techniques/T1027/009/).
@@ -168,6 +178,12 @@ Claim → source mapping (all URLs are official/authoritative):
 - Suricata engine — https://docs.suricata.io/en/latest/
 - Security Onion (Zeek, Suricata, Hunt, PCAP) — https://docs.securityonion.net/ , https://docs.securityonion.net/en/2.4/zeek.html , https://docs.securityonion.net/en/2.4/suricata.html , https://docs.securityonion.net/en/2.4/hunt.html
 - SANS FOR610 — Reverse-Engineering Malware: https://www.sans.org/cyber-security-courses/reverse-engineering-malware-malware-analysis-tools-techniques/
-- MITRE ATT&CK techniques cited above: T1027 https://attack.mitre.org/techniques/T1027/ ; T1027.002 https://attack
+- MITRE ATT&CK techniques cited above: T1027 https://attack.mitre.org/techniques/T1027/ ; T1027.002 https://attack.mitre.org/techniques/T1027/002/ ; T1036.001 https://attack.mitre.org/techniques/T1036/001/ ; T1041 https://attack.mitre.org/techniques/T1041/ ; T1059.003 https://attack.mitre.org/techniques/T1059/003/ ; T1071.001 https://attack.mitre.org/techniques/T1071/001/ ; T1105 https://attack.mitre.org/techniques/T1105/ ; T1140 https://attack.mitre.org/techniques/T1140/ ; T1620 https://attack.mitre.org/techniques/T1620/
 
-<!-- cyberlab-enriched: v1 -->
+## Related modules
+- [NET deobfuscation deep-dive](../29-dotnet-deobf-deep/README.md) -- shares de4dot
+- [ILSpy .NET decompilation deep-dive](../45-ilspy-dotnet-deep/README.md) -- shares de4dot
+- [Scenario: .NET malware analysis](../53-dotnet-malware-case/README.md) -- shares de4dot
+- [Static reverse engineering](../12-static-re/README.md) -- same learning path (Windows RE)
+
+<!-- cyberlab-enriched: v2 -->
