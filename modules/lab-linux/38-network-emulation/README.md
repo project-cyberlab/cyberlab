@@ -99,6 +99,12 @@ Turn a single detonation into reusable detection content in Security Onion (http
 - **Suricata signature** — convert the extracted domain/URI/UA into a rule (`alert dns` on the query name; `alert http` with `http.uri`/`http.user_agent` content matches). Suricata rule keyword syntax is documented in the Suricata rules reference (https://docs.suricata.io/en/latest/rules/index.html).
 - **Beacon-interval analytics** — regular, low-jitter callbacks visible in Zeek `conn.log` timing support hunting **T1071 (Application Layer Protocol)** (https://attack.mitre.org/techniques/T1071/) and data leaving over the C2 channel, **T1041 (Exfiltration Over C2 Channel)** (https://attack.mitre.org/techniques/T1041/) — note the query-string `id=` value the beacon exfiltrates.
 
+**Detection Engineering Deep Dive:**
+- **Windows Event Log Correlation:** The beacon's DNS resolution attempt will generate Windows Event ID 3008 (Microsoft-Windows-DNS-Client/Operational) on the source host, logging the queried domain and the resolved IP (which will be the INetSim IP). This maps to **T1071.004 (DNS)** (https://attack.mitre.org/techniques/T1071/004/). A detection rule can alert on DNS queries to non-existent or suspicious domains that resolve to internal/private IPs (like 127.0.0.1 or the lab subnet), a hallmark of network emulation or local C2 redirection.
+- **Zeek `conn.log` Beaconing Detection:** In Security Onion, analyze the `conn.log` for the beacon's connection. The field `duration` will be short, and the `orig_pkts`/`resp_pkts` count will be low for a single HTTP request. To hunt for periodic beacons, use Elasticsearch aggregations on the `ts` (timestamp) field for the same source IP and destination port (e.g., 80), calculating the standard deviation of time intervals between connections. Low standard deviation (high regularity) is indicative of **T1029 (Scheduled Transfer)** (https://attack.mitre.org/techniques/T1029/), a sub-technique of Exfiltration.
+- **Suricata Rule Logic:** A concrete Suricata rule to detect the specific beacon activity from the exercise would inspect HTTP traffic. The rule would check for the URI pattern and the host header. Example logic: `alert http any any -> any any (msg:"LAB Beacon HTTP Request Detected"; flow:established,to_server; http.uri; content:"/gate.php?id="; http.host; content:"update.malware-lab.example"; nocase; classtype:trojan-activity; sid:1000001; rev:1;)`. This directly maps to **T1071.001**.
+- **Process Creation Correlation:** The initial execution of the beacon script or binary would generate a process creation event (Sysmon Event ID 1 on Windows, or `execve` audit logs on Linux). Correlating this with the subsequent network connection (Zeek `conn.log` linked by source IP, or Windows Event ID 4689 with a new process and its network activity) strengthens the detection chain, covering **T1059 (Command and Scripting Interpreter)** (https://attack.mitre.org/techniques/T1059/) and **T1204 (User Execution)** (https://attack.mitre.org/techniques/T1204/).
+
 ## Attacker perspective
 Attackers assume their malware may be detonated in a sandbox, so C2 clients probe for exactly the flat, over-eager responses these emulators produce — a real HTTPS gate has a specific certificate CN and returns particular status codes, whereas INetSim serves a generic default object for any URL (https://www.inetsim.org/documentation.html). Concrete evasion TTPs mapped to **T1497 (Virtualization/Sandbox Evasion)** (https://attack.mitre.org/techniques/T1497/):
 - **Resolution sanity checks (T1497.001, System Checks)** — malware notices that *every* domain, including a random never-registered name, resolves to the same address (INetSim's `dns_default_ip` behavior), or that a deliberately non-existent domain does *not* return NXDOMAIN, and concludes it is in emulation.
@@ -106,6 +112,12 @@ Attackers assume their malware may be detonated in a sandbox, so C2 clients prob
 - **Time/beacon delays (T1497.003)** — long sleeps or jitter to outlast an automated sandbox's capture window.
 
 On the offensive tooling side, adversaries themselves run fake DNS/HTTP responders (e.g. `dnschef`, rogue listeners) during phishing and MITM operations. Artifacts these techniques leave for defenders: emulator/responder log files, unexpected local listeners on 53/80/443 (visible via `ss -tulpn`), generated self-signed certificates, and captured PCAPs showing every callback attempt.
+
+**Advanced Attacker Tradecraft & Artifacts:**
+- **Domain Fronting & Protocol Impersonation:** To bypass network-based detections that rely on domain or protocol patterns, adversaries may use **T1090 (Proxy)** (https://attack.mitre.org/techniques/T1090/) techniques like domain fronting (using a legitimate CDN domain) or impersonate common protocols like HTTPS over non-standard ports. Network emulators that only simulate standard service ports may miss this traffic, allowing the malware to call home undetected. Defenders must monitor for SSL/TLS handshakes on unexpected ports (Zeek `ssl.log` field `server_name` and `id.resp_p`).
+- **Artifact Generation & Persistence:** When an attacker sets up a persistent C2 channel, they often create scheduled tasks or service persistence mechanisms. The network beacon itself is frequently launched via **T1053 (Scheduled Task/Job)** (https://attack.mitre.org/techniques/T1053/) (e.g., `schtasks` on Windows, `cron` on Linux) or **T1543 (Create or Modify System Process)** (https://attack.mitre.org/techniques/T1543/) (e.g., installing a new systemd service). The initial network callback captured by the emulator is just the first step; forensic analysis should pivot to process creation logs and autostart locations to find the persistence mechanism.
+- **Data Encoding in Exfiltration:** The simple `id=` parameter in the exercise beacon is a basic form of data exfiltration. In real campaigns, adversaries use **T1132 (Data Encoding)** (https://attack.mitre.org/techniques/T1132/) to obfuscate exfiltrated data within HTTP parameters, DNS queries, or TLS certificate fields. Emulator logs may capture the raw, encoded data (e.g., base64 strings in URIs), which analysts must decode to reveal stolen information like credentials or system data.
+- **Living-off-the-Land Network Tools:** Attackers may abuse legitimate system tools for network discovery and lateral movement, a technique known as **LOLBAS** (Living Off the Land Binaries and Scripts). For example, using `nslookup` or `ping` for host discovery (**T1018 (Remote System Discovery)**), or `certutil` to download payloads (**T1105 (Ingress Tool Transfer)**). Network emulation can capture these tool-generated requests, but analysts must recognize the legitimate binary as the source, which is a key indicator of hands-on-keyboard activity post-exploitation.
 
 ## Answer key
 Sample: `exercise/beacon_client.sh` — benign inert bash beacon simulator, generated on-VM (see generator above). Compute and record its digest with `sha256sum exercise/beacon_client.sh` (the validator holds the reference digest for the committed copy).
@@ -129,6 +141,13 @@ Findings: (a) `update.malware-lab.example` resolves to `127.0.0.1` (INetSim's `d
 - **T1568 – Dynamic Resolution** (arbitrary domains resolving to the simulated IP) — https://attack.mitre.org/techniques/T1568/.
 - **T1041 – Exfiltration Over C2 Channel** (beacon query-string data captured) — https://attack.mitre.org/techniques/T1041/.
 - **T1497 – Virtualization/Sandbox Evasion** (why emulators must look realistic) — https://attack.mitre.org/techniques/T1497/.
+- **T1029 – Scheduled Transfer** (periodic beaconing detected via connection interval analysis) — https://attack.mitre.org/techniques/T1029/.
+- **T1059 – Command and Scripting Interpreter** (execution of the beacon script/binary) — https://attack.mitre.org/techniques/T1059/.
+- **T1204 – User Execution** (user or system process execution leading to network callback) — https://attack.mitre.org/techniques/T1204/.
+- **T1053 – Scheduled Task/Job** (potential persistence mechanism for the beacon) — https://attack.mitre.org/techniques/T1053/.
+- **T1132 – Data Encoding** (obfuscation of exfiltrated data within network protocols) — https://attack.mitre.org/techniques/T1132/.
+- **T1018 – Remote System Discovery** (use of network discovery tools captured by emulator) — https://attack.mitre.org/techniques/T1018/.
+- **T1105 – Ingress Tool Transfer** (downloading tools via emulated services) — https://attack.mitre.org/techniques/T1105/.
 - **DFIR phase:** Examination / Analysis (dynamic malware analysis) — feeding extracted IOCs into the Identification phase of downstream hunts (NIST SP 800-61r2 incident-handling phases, https://csrc.nist.gov/pubs/sp/800/61/r2/final).
 
 ## Sources
@@ -144,9 +163,12 @@ Findings: (a) `update.malware-lab.example` resolves to `127.0.0.1` (INetSim's `d
 - Security Onion documentation (Zeek, Suricata, Elastic/Kibana pivots): https://docs.securityonion.net/
 - Suricata rules reference (rule keyword syntax for DNS/HTTP content matches): https://docs.suricata.io/en/latest/rules/index.html
 - SANS FOR610 — Reverse-Engineering Malware (dynamic analysis with simulated network): https://www.sans.org/cyber-security-courses/reverse-engineering-malware-malware-analysis-tools-techniques/
-- MITRE ATT&CK: T1071 https://attack.mitre.org/techniques/T1071/ · T1071.001 https://attack.mitre.org/techniques/T1071/001/ · T1568 https://attack.mitre.org/techniques/T1568/ · T1041 https://attack.mitre.org/techniques/T1041/ · T1497 https://attack.mitre.org/techniques/T1497/ · T1480 https://attack.mitre.org/techniques/T1480/
+- MITRE ATT&CK: T1071 https://attack.mitre.org/techniques/T1071/ · T1071.001 https://attack.mitre.org/techniques/T1071/001/ · T1568 https://attack.mitre.org/techniques/T1568/ · T1041 https://attack.mitre.org/techniques/T1041/ · T1497 https://attack.mitre.org/techniques/T1497/ · T1480 https://attack.mitre.org/techniques/T1480/ · T1029 https://attack.mitre.org/techniques/T1029/ · T1059 https://attack.mitre.org/techniques/T1059/ · T1204 https://attack.mitre.org/techniques/T1204/ · T1053 https://attack.mitre.org/techniques/T1053/ · T1132 https://attack.mitre.org/techniques/T1132/ · T1018 https://attack.mitre.org/techniques/T1018/ · T1105 https://attack.mitre.org/techniques/T1105/ · T1090 https://attack.mitre.org/techniques/T1090/ · T1543 https://attack.mitre.org/techniques/T1543/
 - IANA reserved/special-use domains and RFC 2606 / RFC 5737 (safe `example`/`.example`/TEST-NET addresses): https://www.iana.org/domains/reserved
 - NIST SP 800-61r2 (incident-handling / DFIR phases): https://csrc.nist.gov/pubs/sp/800/61/r2/final
+- Microsoft Docs - DNS Client Events (Event ID 3008): https://docs.microsoft.com/en-us/windows/win32/dns/dns-client-events
+- Zeek Documentation - Log Formats (conn.log, dns.log, http.log, ssl.log): https://docs.zeek.org/en/current/script-reference/log-files.html
+- The LOLBAS Project (Living Off The Land Binaries and Scripts): https://lolbas-project.github.io/
 
 ## Related modules
 - [Volatility 3 deep-dive (memory plugins & workflow)](../20-volatility-deep/README.md) -- same learning path (Deep-dives); correlate emulator-observed C2 with in-memory network artifacts.
@@ -154,4 +176,4 @@ Findings: (a) `update.malware-lab.example` resolves to `127.0.0.1` (INetSim's `d
 - [The Sleuth Kit command mastery](../22-sleuthkit-mastery/README.md) -- same learning path (Deep-dives); recover on-disk payloads a beacon would otherwise fetch.
 - [Plaso super-timeline deep-dive](../23-plaso-supertimeline/README.md) -- same learning path (Deep-dives); place detonation network events on a unified timeline.
 
-<!-- cyberlab-enriched: v1 -->
+<!-- cyberlab-enriched: v2 -->
