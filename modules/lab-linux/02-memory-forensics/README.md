@@ -238,6 +238,42 @@ To evade memory forensics, red teams employ anti-forensic tactics such as **dire
 - [MITRE ATT&CK: T1055.004 (Asynchronous Procedure Call)](https://attack.mitre.org/techniques/T1055/004/)
 - [FireEye: Detecting and Preventing Process Injection](https://www.fireeye.com/blog/threat-research/2017/05/fin7-shim-databases-persistence.html)
 
+
+### Essential Commands & Features
+
+Beyond the basics, several Volatility 3 plugins provide deep investigative capability. `windows.malfind` identifies hidden or injected code by scanning for executable pages mapped to non-file-backed memory. Use this when suspecting code injection (e.g., process hollowing, reflective DLL injection).  
+`vol -f memory.dmp windows.malfind`
+
+`windows.yarascan` applies custom YARA rules to memory regions, enabling detection of indicators like Cobalt Strike beacons or specific string patterns. Use during threat-hunting or when known signatures exist.  
+`vol -f memory.dmp windows.yarascan --yara-rules beacons.yar`
+
+`windows.handles` enumerates all open handles per process, revealing backdoor connections (e.g., named pipe, registry, or file handles not seen in normal activity). Use to identify lateral movement or persistence.  
+`vol -f memory.dmp windows.handles --pid 1234`
+
+`windows.timeliner` produces a timeline of events (process, network, registry) for temporal analysis. Use to reconstruct attack chronology and correlate with system logs.  
+`vol -f memory.dmp windows.timeliner`
+
+These commands directly support detection of **T1047 (Windows Management Instrumentation)** – WMI can be used for lateral movement and persistence, often leaving WMI-related process handles or injected code detectable via `malfind`. Additionally, they aid in uncovering **T1057 (Process Discovery)** – adversaries enumerate processes to identify security tools or potential targets, a behavior that `handles` and `timeliner` can contextualize.
+
+**References:**  
+- Volatility Foundation. "Volatility 3 Command Reference." [volatilityfoundation.org/docs/volatility3/command-reference/](https://volatilityfoundation.org/docs/volatility3/command-reference/)  
+- REMnux. "Memory Forensics with Volatility 3." [docs.remnux.org/memory-forensics/volatility3](https://docs.remnux.org/memory-forensics/volatility3)
+
+### Common Pitfalls & Result Validation
+
+Memory forensics is powerful but prone to misinterpretation. A frequent pitfall is **overlooking process hollowing (T1055.015: *Process Hollowing*)** due to incomplete timeline analysis. Analysts may miss injected code if they rely solely on `pslist` or `pstree` without cross-referencing `ldrmodules` or `malfind`. Validate findings by correlating memory regions with anomalous DLLs or unexpected memory protections (e.g., `PAGE_EXECUTE_READWRITE`). False positives often arise from legitimate applications (e.g., antivirus) using similar techniques—always check parent/child process relationships and command-line arguments.
+
+Another common error is **misidentifying credential dumping (T1486: *Data Encrypted for Impact*)** as benign activity. Tools like Mimikatz leave traces in `lsass.exe` memory, but analysts may confuse these with legitimate authentication processes. Validate by examining `handles` and `dlllist` for suspicious modules (e.g., `sekurlsa::logonpasswords`). Use `volatility3`’s `yarascan` to hunt for known credential-dumping signatures, but confirm hits with `strings` or `dumpfiles` to avoid false conclusions from generic YARA rules.
+
+To avoid pitfalls:
+1. **Cross-validate** findings across multiple plugins (e.g., `malfind` + `yarascan`).
+2. **Baseline** normal system behavior (e.g., expected `lsass.exe` modules) to spot anomalies.
+3. **Document** all steps to reproduce findings and rule out tool artifacts.
+
+**Sources:**
+- [MITRE ATT&CK: Process Hollowing (T1055.015)](https://attack.mitre.org/techniques/T1055/015/)
+- [DFIR Review: Memory Forensics Pitfalls](https://www.dfir.review/)
+
 ## Sources
 Claim → source mapping (all URLs are official/authoritative pages):
 
@@ -284,3 +320,9 @@ Claim → source mapping (all URLs are official/authoritative pages):
 - https://www.fireeye.com/blog/threat-research/2017/05/fin7-shim-databases-persistence.html
 
 <!-- cyberlab-enriched: v4 -->
+- https://volatilityfoundation.org/docs/volatility3/command-reference/
+- https://docs.remnux.org/memory-forensics/volatility3
+- https://attack.mitre.org/techniques/T1055/015/
+- https://www.dfir.review/
+
+<!-- cyberlab-enriched: v5 -->
