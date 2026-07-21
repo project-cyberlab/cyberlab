@@ -176,6 +176,55 @@ Avoid false conclusions by never relying solely on one debugging session; cross�
 - MITRE ATT&CK: Process Hollowing – [https://attack.mitre.org/techniques/T1055/013/](https://attack.mitre.org/techniques/T1055/013/)
 - MITRE ATT&CK: User Execution – [https://attack.mitre.org/techniques/T1204/002/](https://attack.mitre.org/techniques/T1204/002/)
 
+
+### Essential Commands & Features
+
+Mastering **x64dbg**’s advanced features accelerates reverse engineering and malware analysis. Below are **critical but undemonstrated** commands and features, with concrete examples and tactical use cases:
+
+1. **Memory Breakpoints (`bp m`)**
+   Trigger on *read/write/execute* access to a memory region (e.g., unpacked code or API hooks).
+   **Example**: `bp m write, 0x401000, 0x1000` (break on write to `0x401000-0x402000`).
+   **Use Case**: Detect **T1055.004 (Process Injection: Asynchronous Procedure Call)** when malware writes to remote process memory.
+   *Right-click target address → Breakpoint → Memory Breakpoint → Select access type.*
+
+2. **Conditional Breakpoints (`bp addr, "condition"`)**
+   Pause execution only when a condition is met (e.g., register value, memory content).
+   **Example**: `bp 0x401234, "eax == 0x55AA"` (break at `0x401234` if `EAX` equals `0x55AA`).
+   **Use Case**: Bypass **T1562.006 (Indicator Blocking: Code Signing Policy Modification)** by catching specific anti-debug checks.
+
+3. **Scripting API (`log`, `findmem`, `alloc`)**
+   Automate repetitive tasks (e.g., dumping memory, scanning for patterns).
+   **Example**:
+   ```python
+   findmem("68 ?? ?? ?? ?? E8", 0x400000, 0x410000)  # Find CALL instructions in .text
+   log("Found pattern at: {0}", $result)
+   ```
+   **Use Case**: Hunt for **T1574.001 (Hijack Execution Flow: DLL Search Order Hijacking)** by scripting pattern searches.
+
+4. **Hardware Breakpoints (`bph`)**
+   Use CPU debug registers (DR0-DR3) to break on *execute/read/write* to a specific address (limited to 4 breakpoints).
+   **Example**: `bph 0x401000, x` (break on execute at `0x401000`).
+   **Use Case**: Track **T1055.003 (Process Injection: Thread Execution Hijacking)** by monitoring thread start addresses.
+
+**Authoritative Sources**:
+- [x64dbg Scripting Documentation (GitBook)](https://x64dbg.com/script/)
+- [SANS FOR610: Reverse-
+
+### Threat Hunting & Detection Engineering
+
+Dynamic debugging tools (e.g., x64dbg, WinDbg) are frequently abused by adversaries to analyze and bypass security controls. Threat hunters can detect such activity by monitoring for **Process Injection (T1055.001)** and **Debugger Evasion (T1620)** techniques.
+
+**Detection Logic:**
+1. **Windows Event Logs (Sysmon Event ID 10)** – Look for `GrantedAccess` values of `0x1F0FFF` (full debug privileges) or `0x1F3FFF` (extended debug privileges) when a process opens another process (e.g., `TargetImage: lsass.exe`). This may indicate credential dumping via debugging tools.
+2. **Zeek/Suricata Network Telemetry** – Monitor for unusual outbound connections from debugging tools (e.g., `x64dbg.exe`, `windbg.exe`) to external IPs, particularly if the process is not expected to communicate over the network. Use Zeek’s `conn.log` to filter for `service == "unknown"` or Suricata’s `flow` logs for anomalous TLS/HTTP traffic from these binaries.
+3. **Threat-Hunting Pivots:**
+   - **Parent-Child Process Anomalies:** Hunt for `x64dbg.exe` spawning `cmd.exe` or `powershell.exe` (Sysmon Event ID 1).
+   - **Registry Modifications:** Check for changes to `HKLM\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Image File Execution Options\*` (Sysmon Event ID 13), which may indicate debugger persistence (T1546.012).
+
+**Sources:**
+- [MITRE ATT&CK: Debugger Evasion (T1620)](https://attack.mitre.org/techniques/T1620/)
+- [CISA Alert: Detecting Process Injection Techniques](https://www.cisa.gov/uscert/ncas/alerts/aa22-152a)
+
 ## Sources
 - x64dbg official site — https://x64dbg.com/ ; docs — https://help.x64dbg.com/
 - x64dbg `bp` command reference — https://help.x64dbg.com/en/latest/commands/breakpoints/bp.html
@@ -224,3 +273,8 @@ Avoid false conclusions by never relying solely on one debugging session; cross�
 - https://attack.mitre.org/techniques/T1204/002/](https://attack.mitre.org/techniques/T1204/002/
 
 <!-- cyberlab-enriched: v3 -->
+- https://x64dbg.com/script/
+- https://attack.mitre.org/techniques/T1620/
+- https://www.cisa.gov/uscert/ncas/alerts/aa22-152a
+
+<!-- cyberlab-enriched: v4 -->
