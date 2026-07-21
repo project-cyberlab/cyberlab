@@ -141,6 +141,50 @@ Why these findings hold: UPX's own documentation describes it as a compressor th
 - **T1059.001** — Powershell. https://attack.mitre.org/techniques/T1059/001/
 - DFIR phase: **Examination / Analysis** (static triage of a collected artifact prior to dynamic analysis).
 
+
+### Essential Commands & Features
+
+PE-bear’s advanced parsing capabilities reveal critical artifacts often overlooked in static analysis. Below are the most impactful commands and features—with concrete examples—to extract evasion-relevant data not covered in prior exercises.
+
+**1. Missing Overlay Parsing**
+Use the `--overlay` flag to dump appended data (e.g., embedded payloads or config files) to a file. Overlays are common in packed malware (e.g., **T1027.009: Embedded Payloads**).
+```bash
+pe-bear --file malware.exe --overlay overlay.bin
+```
+*When to use*: Suspect secondary payloads or encoded data post-EOF.
+
+**2. TLS Callbacks**
+Navigate to the *Directories* tab → *TLS* to enumerate callback addresses. Malware like **T1574.002: Hijack Execution Flow: DLL Side-Loading** abuses TLS to execute code before `main()`.
+```bash
+pe-bear --file sample.dll --tls-callbacks
+```
+*When to use*: Unusual entry points or anti-debugging tricks.
+
+**3. Debug Directory Analysis**
+Inspect the *Debug* directory (via *Directories* tab) for PDB paths or timestamps. Attackers may leave artifacts (e.g., **T1592.001: Gather Victim Host Information: Hardware**).
+```bash
+pe-bear --file spyware.exe --debug-dir
+```
+*When to use*: Attribution or build environment leaks.
+
+**4. Rich Header Analysis**
+Enable *Rich Header* view (under *Headers* tab) to detect compiler anomalies. Tampered headers may indicate **T1027.005: Indicator Removal from Tools**.
+```bash
+pe-bear --file modified.exe --rich-header
+```
+*When to use*: Suspicious linker versions or mismatched toolchains.
+
+**Sources**:
+- [PE-bear GitHub Wiki: Advanced Features](https://github.com/hasherezade/pe-bear/wiki/Advanced-Features)
+- [FireEye: Rich Header Analysis in Malware](https://www.fireeye.com/blog/threat-research/2019/08/rich-headers-leveraging-metadata-to-hunt-for-malware.html)
+
+### Common Pitfalls & Result Validation
+When analyzing PE files with PE-bear, analysts often misinterpret section characteristics, particularly the combination of write and execute permissions (WX). While WX sections can indicate packed or injected code, many legitimate compilers generate `.text` and `.rdata` sections with both permissions. **Validation**: Cross-reference entropy values (PE-bear’s entropy view) with section raw data; high entropy (>7.5) in a non-packed section often signals obfuscation or encryption. Use a secondary tool like Detect It Easy (DIE) to confirm packer signatures and check for anomalies in virtual size vs. raw size. A common false conclusion is assuming a high-entropy section is automatically malicious, but compiled .NET and Python executables also exhibit high entropy.  
+
+Another pitfall is overlooking overlay data appended after the PE structure. Malware such as **T1553.002 (Subvert Trust Controls: Code Signing)** can attach a stolen or invalid digital signature to appear legitimate. **Validation**: Extract overlay bytes, compute their entropy, and scan with YARA rules for known shellcode patterns. Never trust a signature without verifying the certificate chain and revocation status. Additionally, malware increasingly uses **T1036.005 (Masquerading: Match Legitimate Name or Location)** by renaming sections (e.g., `.text` → `CODE`) to evade simple detections. **Validation**: Map section names against Microsoft PE specs and inspect section content rather than relying on name heuristics. Always correlate static findings with dynamic analysis or memory dumps to confirm suspicious indicators.  
+
+For authoritative guidance, refer to the PE-bear user guide by hasherezade (https://hshrzd.wordpress.com/pe-bear/) and Mandiant’s static PE analysis best practices (https://www.mandiant.com/resources/blog/static-malware-analysis-1).
+
 ## Sources
 Claim → source mapping (all URLs are real, authoritative pages):
 
@@ -174,3 +218,9 @@ Claim → source mapping (all URLs are real, authoritative pages):
 === END MODULE ===
 
 <!-- cyberlab-enriched: v2 -->
+- https://github.com/hasherezade/pe-bear/wiki/Advanced-Features
+- https://www.fireeye.com/blog/threat-research/2019/08/rich-headers-leveraging-metadata-to-hunt-for-malware.html
+- https://hshrzd.wordpress.com/pe-bear/
+- https://www.mandiant.com/resources/blog/static-malware-analysis-1
+
+<!-- cyberlab-enriched: v3 -->
