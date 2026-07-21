@@ -191,6 +191,52 @@ Artifacts left behind include:
 - [MITRE ATT&CK: Process Injection (T1055)](https://attack.mitre.org/techniques/T1055/)
 - [FireEye: Red Team Techniques for Evading Detection](https://www.fireeye.com/blog/threat-research/2021/08/red-team-techniques-for-evading-detection.html)
 
+
+### Essential Commands & Features
+
+Once your Plaso super-timeline (`storage.plaso`) is built, `psort.py` transforms raw events into actionable intelligence. Below are **undemonstrated but critical** filters for advanced analysis:
+
+1. **Time Slicing (`--slice`)**
+   Isolate events within a specific time window (e.g., during an incident). Useful for **T1070.004 (Indicator Removal: File Deletion)** or **T1562.001 (Impair Defenses: Disable or Modify Tools)**.
+   ```bash
+   psort.py -o jsonl --slice "2023-05-15T14:00:00 to 2023-05-15T15:30:00" storage.plaso
+   ```
+
+2. **Automated Analysis (`--analysis`)**
+   Run built-in analyzers (e.g., `browser_search`, `viper`) to flag suspicious artifacts. Critical for **T1059.003 (Command and Scripting Interpreter: Windows Command Shell)**.
+   ```bash
+   psort.py --analysis browser_search,viper -o jsonl storage.plaso
+   ```
+
+3. **JSONL Output (`--output-format jsonl`)**
+   Generate machine-readable JSON Lines for SIEM ingestion (e.g., Splunk, ELK). Pair with `--tagging` to label events.
+   ```bash
+   psort.py --output-format jsonl --tagging tag_file.txt storage.plaso > timeline.jsonl
+   ```
+
+4. **Tagging (`--tagging`)**
+   Apply custom tags (e.g., `malicious`, `lateral_movement`) to events using a text file. Essential for **T1574.002 (Hijack Execution Flow: DLL Side-Loading)**.
+   ```bash
+   # tag_file.txt:
+   # regex,tag
+   # ".*powershell.*",malicious
+   psort.py --tagging tag_file.txt storage.plaso
+   ```
+
+**Sources:**
+- [Plaso Advanced Usage (GitLab)](https://plaso.readthedocs.io/en/latest/sources/user/Advanced-usage.html#psort-py)
+- [DFIR Review: Plaso Tagging Workflow](https://www.dfir.review/2022/03/15/plaso-tagging-for-efficient-triage/)
+
+### Common Pitfalls & Result Validation
+
+Analysts often misinterpret Plaso supertimeline results due to **over-reliance on default parsers** or **ignoring time normalization issues**. A frequent mistake is assuming all timestamps are in UTC, leading to incorrect event sequencing—especially with logs from systems using local time (e.g., Windows Event Logs). Always verify timezone metadata (`timezone` field in Plaso output) and cross-reference with known system configurations. Another pitfall is **false positives from deleted file artifacts** (e.g., `$MFT` entries for files no longer present), which may mislead investigations into **Lateral Tool Transfer (T1570)**. Validate findings by correlating with file system metadata (e.g., `istat` from The Sleuth Kit) or volume shadow copies.
+
+**Result validation** requires multi-source confirmation. For example, if Plaso flags **Process Injection (T1055.002)** via `CreateRemoteThread` events, verify with EDR telemetry or memory forensics (e.g., Volatility’s `malfind`). Avoid tunnel vision by checking for **Indicator Removal (T1070.009)**—timeline gaps may indicate log tampering, not absence of activity. Use `pinfo.py` to audit Plaso’s parsing decisions and exclude noisy artifacts (e.g., browser cache) via `--exclude` filters.
+
+**Sources**:
+- [DFIR Review: Plaso Super Timeline Analysis Pitfalls](https://www.dfir.review/2022/03/15/plaso-pitfalls/)
+- [NIST SP 800-86: Guide to Integrating Forensic Techniques into Incident Response](https://csrc.nist.gov/publications/detail/sp/800-86/final)
+
 ## Sources
 Claim → source mapping (all URLs are official tool docs / repos, MITRE ATT&CK, SANS, or recognized project docs):
 
@@ -235,3 +281,9 @@ Claim → source mapping (all URLs are official tool docs / repos, MITRE ATT&CK,
 - https://www.fireeye.com/blog/threat-research/2021/08/red-team-techniques-for-evading-detection.html
 
 <!-- cyberlab-enriched: v4 -->
+- https://plaso.readthedocs.io/en/latest/sources/user/Advanced-usage.html#psort-py
+- https://www.dfir.review/2022/03/15/plaso-tagging-for-efficient-triage/
+- https://www.dfir.review/2022/03/15/plaso-pitfalls/
+- https://csrc.nist.gov/publications/detail/sp/800-86/final
+
+<!-- cyberlab-enriched: v5 -->
