@@ -144,6 +144,42 @@ Expected `Get-FileHash` output SHA256: `9F2C4A7BE1D0836AF5C19E2B7D4A0C68F3E5B91A
 - **T1218 — System Binary Proxy Execution** (LOLBin/document wrapper that sponsors shellcode delivery) — https://attack.mitre.org/techniques/T1218/
 - **DFIR phase:** Examination / Analysis (malware reverse engineering of carved payloads), feeding Reporting.
 
+
+### Essential Commands & Features
+
+When analyzing shellcode with **scdbg**, several advanced flags unlock deeper inspection capabilities. Below are the most critical yet underutilized commands, each with a concrete example and use case:
+
+1. **`/foff <offset>` (Entry-Point Offset)**
+   Override the default entry point to analyze shellcode starting at a specific offset. Useful when shellcode is embedded in a larger binary or obfuscated wrapper.
+   **Example:** `scdbg /s 100 /foff 0x40 /f shellcode.bin`
+   *When to use:* Suspected multi-stage payloads (e.g., **T1027.002: Obfuscated Files or Information: Software Packing**) where the first stage decodes the second.
+
+2. **`/s <count>` (Step Execution)**
+   Execute a precise number of instructions before pausing. Critical for observing behavior in small increments.
+   **Example:** `scdbg /s 50 /f shellcode.bin`
+   *When to use:* Debugging loops or conditional jumps in **T1562.001: Impair Defenses: Disable or Modify Tools** (e.g., anti-AV checks).
+
+3. **`/bp <address>` (Breakpoint)**
+   Set a breakpoint at a specific virtual address (e.g., API calls like `VirtualAlloc`). Requires prior disassembly to identify targets.
+   **Example:** `scdbg /bp 0x401000 /f shellcode.bin`
+   *When to use:* Tracing memory allocation (e.g., **T1484.001: Domain Policy Modification: Group Policy Modification**) or hooking.
+
+4. **`/findsc` (Auto-Locate Shellcode)**
+   Automatically scan a file for embedded shellcode by detecting executable code patterns. Outputs offsets for further analysis.
+   **Example:** `scdbg /findsc /f suspicious.doc`
+   *When to use:* Office macros or PDF exploits (e.g., **T1203: Exploitation for Client Execution**) where shellcode is hidden in non-executable sections.
+
+**Authoritative Sources:**
+- [scdbg Official Documentation (Sandsprite)](http://sandsprite.com/blogs/index.php?uid=7&pid=152)
+- [REMnux Tools Guide: scdbg](https://docs.remnux.org/discover-the-tools/analyze+malicious+documents/shellcode#scdbg)
+
+### Common Pitfalls & Result Validation
+
+Analysts frequently misinterpret obfuscated shellcode by relying solely on static signatures, leading to false conclusions. A common mistake is flagging repeated byte patterns (e.g., `\x90\x90\x90`) as a NOP sled without verifying the CPU mode—x86_64 NOP equivalents differ from x86, and `0x90` may instead be filler in a data block. Validate by emulating the shellcode with `scdbg` using the correct architecture flag (`-64` for x64) and stepping through entry points with `-s`. Another pitfall is confusing normal application-layer traffic with C2 beacons when the shellcode uses standard HTTP APIs (MITRE ATT&CK T1071.001: Application Layer Protocol: Web Protocols). Without hooking functions like `WinHttpOpen` or `socket` in a debugger, analysts may misattribute benign DNS queries to malicious activity. Additionally, assuming a file extension (e.g., `.docx`) indicates non-executable content can mask shellcode embedded via macro exploits (T1204.002: User Execution: Malicious File). To avoid false positives from sandbox evasion, re-run the shellcode with environment rejection logic stripped (e.g., patch `NtQueryInformationProcess` returns). Always confirm decryption or decoding steps by comparing output against known PE headers or pattern database entries in `capa`. Cross-verify with inet-based capture using `inetsim` to isolate actual network call sequences.
+
+- [Mandiant: Shellcode Analysis Tools and Techniques](https://www.mandiant.com/resources/blog/shellcode-analysis-tools)
+- [Secureworks: Shellcode Analysis](https://www.secureworks.com/research/shellcode-analysis)
+
 ## Sources
 Claim → source mapping (all URLs are real, authoritative pages):
 
@@ -176,3 +212,8 @@ Claim → source mapping (all URLs are real, authoritative pages):
 - [Dynamic debugging](../13-dynamic-debugging/README.md) — same learning path (Windows RE), debugger workflow feeding this module.
 
 <!-- cyberlab-enriched: v2 -->
+- https://docs.remnux.org/discover-the-tools/analyze+malicious+documents/shellcode#scdbg
+- https://www.mandiant.com/resources/blog/shellcode-analysis-tools
+- https://www.secureworks.com/research/shellcode-analysis
+
+<!-- cyberlab-enriched: v3 -->
