@@ -146,6 +146,30 @@ Expected: `timeline` rows show `secret.txt` as the most recent deletion event (l
 - **T1105** — Ingress Tool Transfer (correlated via timeline file creation events and network logs). https://attack.mitre.org/techniques/T1105/
 - **DFIR phases:** Examination and Analysis (evidence acquisition assumed complete; TSK operates read-only on the acquired image), feeding into Reporting. This maps to the classic DFIR/NIST SP 800-86 phases of Examination → Analysis → Reporting (https://csrc.nist.gov/pubs/sp/800/86/final).
 
+
+### Essential Commands & Features
+
+Mastering **The Sleuth Kit (TSK)** requires familiarity with advanced commands for carved data recovery and signature-based file identification. Below are critical yet often overlooked tools and their practical applications:
+
+1. **`blkcalc`** – Maps unallocated block addresses to their original file system locations, essential for recovering carved data.
+   **Example:** `blkcalc -d /dev/sdb1 -u 1024`
+   **Use Case:** After running `blkls` to extract unallocated blocks, use `blkcalc` to trace them back to their original files (e.g., during **T1082 System Information Discovery** investigations).
+
+2. **`blkls`** – Extracts unallocated or slack space from a disk image for forensic analysis.
+   **Example:** `blkls -A image.dd > unallocated.raw`
+   **Use Case:** Recover deleted files or fragments when analyzing **T1566.001 Spearphishing Attachment** artifacts.
+
+3. **`sigfind`** – Searches for binary signatures (e.g., file headers) in raw data, aiding in file carving.
+   **Example:** `sigfind -b 512 -o 0x00 -t jpeg image.dd`
+   **Use Case:** Identify remnants of exfiltrated files (e.g., **T1048.003 Exfiltration Over Alternative Protocol: Exfiltration Over Unencrypted/Obfuscated Non-C2 Protocol**).
+
+These commands bridge gaps in traditional forensic workflows, enabling deeper analysis of disk artifacts. For further reference:
+- [Sleuth Kit Informer: Advanced Forensic Techniques](https://wiki.sleuthkit.org/index.php?title=TSK_Informer)
+- [NIST SP 800-86: Guide to Integrating Forensic Techniques into Incident Response](https://csrc.nist.gov/publications/detail/sp/800-86/final)
+
+### Threat Hunting & Detection Engineering
+To effectively hunt and detect threats, it's crucial to analyze logs from various sources, including Windows Event IDs and network traffic captures. For instance, detecting `T1190: Exploit Public-Facing Application` and `T1204: User Execution` requires monitoring Windows Event ID 4688 for suspicious process creations and command-line arguments. Additionally, analyzing Zeek logs for unusual HTTP requests or Suricata alerts for potential exploit attempts can help identify malicious activity. Threat hunters can pivot on fields like user agents, source IP addresses, or DNS queries to uncover related events. By leveraging these log sources and detection logic, security teams can engineer targeted detection rules to identify and disrupt attacker techniques. For more information on threat hunting and detection engineering, visit the Cyber and Infrastructure Security Agency's (CISA) website at [https://www.cisa.gov](https://www.cisa.gov) or the National Institute of Standards and Technology's (NIST) Computer Security Resource Center at [https://csrc.nist.gov](https://csrc.nist.gov).
+
 ## Sources
 Claim → source mapping (all URLs are real, authoritative pages):
 
@@ -190,3 +214,9 @@ Claim → source mapping (all URLs are real, authoritative pages):
 - [Volatility 3 deep-dive (memory plugins & workflow)](../20-volatility-deep/README.md) -- same learning path (Deep-dives), pairing memory forensics with the disk forensics covered here.
 
 <!-- cyberlab-enriched: v2 -->
+- https://wiki.sleuthkit.org/index.php?title=TSK_Informer
+- https://csrc.nist.gov/publications/detail/sp/800-86/final
+- https://www.cisa.gov](https://www.cisa.gov
+- https://csrc.nist.gov](https://csrc.nist.gov
+
+<!-- cyberlab-enriched: v3 -->
