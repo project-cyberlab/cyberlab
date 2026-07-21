@@ -152,6 +152,59 @@ Sample sha256: recorded at generation time via `sha256sum sample_macro.doc` (reg
 - **T1218.010** — System Binary Proxy Execution: Regsvr32 (abusing trusted COM objects via VBA). https://attack.mitre.org/techniques/T1218/010/
 - **DFIR phase:** Identification & Examination (static triage of a suspected malicious document prior to any dynamic analysis).
 
+
+### Essential Commands & Features
+
+The `olevba` and `oledump` tools offer powerful features for deobfuscating and inspecting malicious Office documents. Below are the most critical commands and flags not yet demonstrated, with concrete examples and use cases:
+
+#### **1. `olevba --decode`**
+Decodes obfuscated strings (e.g., hex, base64, or XOR-encoded payloads) in VBA macros. Use this when analyzing documents employing **T1132.001 (Data Encoding: Standard Encoding)** or **T1027.010 (Obfuscated Files or Information: Command Obfuscation)**.
+**Example:**
+```bash
+olevba --decode malicious.doc
+```
+This reveals decoded strings directly in the output, simplifying analysis of hidden payloads.
+
+#### **2. `olevba --reveal`**
+Extracts and displays *all* VBA code, including auto-executed macros (e.g., `AutoOpen`, `Document_Open`). Critical for detecting **T1566.002 (Phishing: Spearphishing Link)** or **T1203 (Exploitation for Client Execution)**.
+**Example:**
+```bash
+olevba --reveal malicious.xls
+```
+This ensures no macro is overlooked, even if hidden in non-standard streams.
+
+#### **3. `oledump -d` (Dump Raw Stream)**
+Outputs the raw binary content of a stream (e.g., for manual hex analysis or carving embedded files). Useful for **T1566.001 (Phishing: Spearphishing Attachment)** when macros contain encoded executables.
+**Example:**
+```bash
+oledump.py -s 3 -d malicious.doc > stream3.bin
+```
+Replace `3` with the target stream number from `oledump`’s initial output.
+
+#### **4. `oledump -v` (Verbose Decompression)**
+Decompresses and displays *compressed* VBA streams (e.g., in `.docm`/`.xlsm` files). Essential for **T1105 (Ingress Tool Transfer)** when malware hides in compressed streams.
+**Example:**
+```bash
+oledump.py -s 4 -v malicious.docm
+```
+This reveals the decompressed VBA code, bypassing compression obfuscation.
+
+**Sources:**
+- [Didier Stevens’ `oletools` Documentation](https://www.decalage.info/oletools)
+- [CISA Malware Analysis: OLE Tools Guide](https://www.cisa.gov/resources-tools/services/malware-analysis)
+
+### Common Pitfalls & Result Validation
+
+A common mistake when using `olevba`, `mraptor`, or `rtfobj` is relying solely on static indicators, such as an `Auto_Open` flag or `Suspicious: VBA Stomping` warning, to classify a document as malicious. Many legitimate Office files trigger these alerts—for example, enterprise templates with delegitimize digital signatures or VBA code that performs benign administrative tasks. Without validation, analysts may produce false positives.
+
+To confirm findings, always cross-reference extracted VBA strings against known malicious patterns via sandbox detonation. Use dynamic analysis to observe runtime behavior: does the macro attempt to fetch a remote payload via `PowerShell` or `mshta`? Validate calls to `CreateObject("WScript.Shell")` and check for execution of shell commands or download of an encoded script. Avoid concluding that a macro is benign solely because it fails to run in a stripped environment; many maldocs check for sandboxes.
+
+Also watch for VBA code that decoys with legitimate error handlers while XOR-deobfuscating a second-stage downloader. Analysts frequently overlook obfuscated strings that only decode during execution, leading to missed IOCs. Use `olevba`'s `--reveal` mode to expose hidden strings, but remember that this still may not uncover Anti-Sandbox or Anti-VM logic. Common ATT&CK techniques associated with these malicious activities include **T1059.007 Command and Scripting Interpreter: JavaScript** (for dropped JS payloads) and **T1547.001 Boot or Logon Autostart Execution: Registry Run Keys / Startup Folder** (when macros modify `Run` keys for persistence). Always verify persistence mechanisms in a sandbox that simulates reboot.
+
+For authoritative guidance on oletools and macro validation, see:  
+[https://www.decalage.info/python/oletools](https://www.decalage.info/python/oletools)  
+[https://blog.didierstevens.com/2012/06/17/oletools-overview/](https://blog.didierstevens.com/2012/06/17/oletools-overview/)
+
 ## Sources
 Claim → source mapping (all URLs are to official/authoritative pages):
 
@@ -184,3 +237,9 @@ Claim → source mapping (all URLs are to official/authoritative pages):
 - [YARA rule authoring & threat hunting](../21-yara-authoring/README.md) -- same learning path (Deep-dives), for turning macro IOCs into detections.
 
 <!-- cyberlab-enriched: v2 -->
+- https://www.decalage.info/oletools
+- https://www.cisa.gov/resources-tools/services/malware-analysis
+- https://www.decalage.info/python/oletools](https://www.decalage.info/python/oletools
+- https://blog.didierstevens.com/2012/06/17/oletools-overview/](https://blog.didierstevens.com/2012/06/17/oletools-overview/
+
+<!-- cyberlab-enriched: v3 -->
