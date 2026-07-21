@@ -175,6 +175,52 @@ Master these **undemonstrated** Nmap commands to enhance web-app testing efficie
 ### Threat Hunting & Detection Engineering
 To effectively hunt and detect threats in web application testing, it's crucial to analyze logs from various sources, including web server logs, database logs, and system logs. For instance, Windows Event ID 4688 can indicate a suspicious process creation, while Zeek's HTTP logs can reveal potential command and control (C2) communications. By monitoring these logs, you can detect techniques like [T1204](https://attack.mitre.org/techniques/T1204) - User Execution, where an attacker tricks a user into executing malicious code, and [T1558](https://attack.mitre.org/techniques/T1558) - Steal or Manipulate Other Application Data, where an attacker steals or manipulates sensitive data from other applications. Threat hunters can pivot on fields like user agents, IP addresses, and request URLs to identify patterns of suspicious activity. By leveraging these detection engineering techniques, you can improve your ability to identify and respond to web application threats. For more information on threat hunting and detection engineering, visit the [Cyber and Infrastructure Security Agency (CISA)](https://www.cisa.gov/) and [Center for Internet Security (CIS)](https://www.cisecurity.org/) websites.
 
+
+### Essential Commands & Features
+
+Master these **Nmap** commands to uncover hidden attack surfaces and refine your web-app reconnaissance:
+
+1. **`-sC` (Default Scripts)**
+   Run Nmap’s default script set to detect common vulnerabilities (e.g., HTTP headers, SSL/TLS weaknesses).
+   *Example:* `nmap -sC 192.168.1.1 -p 80,443`
+   *Use when:* You need quick, broad coverage of misconfigurations (e.g., **MITRE ATT&CK T1595.002: Vulnerability Scanning**).
+
+2. **`-O` (OS Detection)**
+   Fingerprint the target’s OS to tailor exploits or evade defenses.
+   *Example:* `nmap -O 192.168.1.1`
+   *Use when:* OS-specific payloads (e.g., **T1018: Remote System Discovery**) are needed.
+
+3. **`--script=<custom>` (Custom Scripts)**
+   Load NSE scripts (e.g., `http-sql-injection`) for targeted checks.
+   *Example:* `nmap --script=http-sql-injection 192.168.1.1 -p 80`
+   *Use when:* Testing for SQLi or other OWASP Top 10 risks.
+
+4. **`-p-` (All Ports)**
+   Scan all 65,535 ports to find non-standard services.
+   *Example:* `nmap -p- 192.168.1.1`
+   *Use when:* Suspecting hidden admin panels or backdoors.
+
+5. **`-A` (Aggressive Scan)**
+   Combine OS detection, version scanning, script scanning, and traceroute.
+   *Example:* `nmap -A 192.168.1.1`
+   *Use when:* Time permits deep enumeration (e.g., **T1592.004: Gather Victim Host Information**).
+
+**Sources:**
+- [Nmap Network Scanning Guide (Official)](https://nmap.org/book/man.html)
+- [Red Teaming Tactics (Sektor7)](https://blog.sektor7.net/)
+
+### Adversary Emulation & Red-Team Perspective
+
+From an adversary’s perspective, web application testing is a goldmine for initial access, lateral movement, and data exfiltration. Attackers often chain vulnerabilities to escalate privileges or maintain persistence. For example, **Server-Side Request Forgery (SSRF)** (T1190: *Exploit Public-Facing Application*) can be leveraged to pivot into internal networks, bypassing firewalls by forcing the server to make unauthorized requests to internal services. Similarly, **Web Shells** (T1505.003: *Server Software Component: Web Shell*) provide a stealthy backdoor, allowing attackers to execute arbitrary commands while blending in with legitimate traffic.
+
+Attackers may also abuse **HTTP Request Smuggling** (T1190) to poison caches or hijack sessions, leaving minimal forensic traces beyond anomalous request patterns in web logs. To evade detection, adversaries often obfuscate payloads (e.g., encoding, fragmentation) or exploit misconfigured WAFs by splitting malicious input across multiple requests. Artifacts may include unusual outbound connections (e.g., to attacker-controlled domains), unexpected file modifications (e.g., `.jsp` or `.php` backdoors), or irregular user-agent strings.
+
+For evasion, attackers may throttle requests, use legitimate-looking domains (e.g., typosquatting), or exploit **Living-off-the-Land Binaries (LOLBins)** (T1218: *System Binary Proxy Execution*) to execute post-exploitation actions without dropping malware.
+
+**Sources:**
+- [OWASP Web Security Testing Guide: SSRF](https://owasp.org/www-project-web-security-testing-guide/latest/4-Web_Application_Security_Testing/07-Input_Validation_Testing/19-Testing_for_Server-Side_Request_Forgery_SSRF)
+- [Red Canary: Web Shell Detection](https://redcanary.com/threat-detection-report/techniques/web-shell/)
+
 ## Sources
 Claim → source mapping (all URLs are real, authoritative pages):
 
@@ -225,3 +271,8 @@ Claim → source mapping (all URLs are real, authoritative pages):
 - https://www.cisecurity.org/
 
 <!-- cyberlab-enriched: v3 -->
+- https://blog.sektor7.net/
+- https://owasp.org/www-project-web-security-testing-guide/latest/4-Web_Application_Security_Testing/07-Input_Validation_Testing/19-Testing_for_Server-Side_Request_Forgery_SSRF
+- https://redcanary.com/threat-detection-report/techniques/web-shell/
+
+<!-- cyberlab-enriched: v4 -->
