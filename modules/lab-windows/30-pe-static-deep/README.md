@@ -209,6 +209,52 @@ Authoritative references:
 https://www.mandiant.com/resources/static-analysis-malware-techniques  
 https://www.crowdstrike.com/blog/common-malware-analysis-mistakes/
 
+
+### Essential Commands & Features
+
+**Overlay Parsing** (`--overlay`)  
+Appended data beyond the PE's physical end is commonly used to stash encrypted configs or additional payloads.  
+`pebear -f malware.exe --overlay` dumps overlay bytes directly.  
+*Use when* scanning for hidden data not visible in standard sections – attack groups often stash C2 configuration here (T1564.001 Hidden Files and Directories).  
+
+**TLS Callbacks** (`--tls-callbacks`)  
+TLS (Thread Local Storage) callbacks fire before the entry point, enabling stealthy execution of malicious code.  
+`pebear -f sample.exe --tls-callbacks` lists all callback function addresses and their index.  
+*Use when* malware avoids the entry point – common in loader trojans (T1204.002 User Execution: Malicious File).  
+
+**Debug Directory** (`--debug-directory`)  
+The debug directory may contain embedded CodeView data, linking to original PDB paths that reveal developer or project names.  
+`pebear -f unknown.exe --debug-directory` extracts the debug type, timestamp, and path.  
+*Use when* pivoting from a binary to developer attribution; also useful to spot tampered debug entries in fileless payloads.  
+
+**Rich Header Analysis** (`--rich-header`)  
+The Rich Header holds XOR-obfuscated compiler version info and build counts, helping profile development environments.  
+`pebear -f malware.exe --rich-header` decodes and displays the product list and counts.  
+*Use when* grouping samples by compiler family or identifying false-flagged benign tools.  
+
+For authoritative references: [Microsoft PE Format – Debug Directory](https://docs.microsoft.com/en-us/windows/win32/debug/pe-format) and [SANS – Malicious PE Overlay Analysis](https://www.sans.org/white-papers/2696/).
+
+### Threat Hunting & Detection Engineering
+
+Once a 30+ PE file is unpacked, hunt for **T1055.012 (Process Injection: Process Hollowing)** and **T1574.002 (Hijack Execution Flow: DLL Side-Loading)** by correlating static indicators with runtime telemetry.
+
+**Detection Logic (Windows Event Logs):**
+- **Event ID 10 (Process Creation)** – Look for `ParentImage` ending in `explorer.exe` and `Image` paths outside `C:\Program Files\` or `C:\Windows\System32\`. Filter on `CommandLine` containing `svchost.exe -k` without a valid service group (e.g., `netsvcs`).
+- **Event ID 8 (CreateRemoteThread)** – Cross-reference `SourceImage` (injected process) with `TargetImage` (hollowed process). Prioritize `TargetImage` values like `svchost.exe`, `dllhost.exe`, or `msiexec.exe` spawned from unusual parents (e.g., `powershell.exe`).
+- **Event ID 7 (Image Load)** – Hunt for DLLs loaded from `%TEMP%` or `%APPDATA%` with mismatched signatures (e.g., `version.dll` sideloaded by a non-Microsoft binary).
+
+**Zeek/Suricata Pivots:**
+- **Zeek `pe` logs** – Filter for `section_names` containing `.reloc` or `.tls` (common in hollowing) and `import_hash` values linked to known malicious families (e.g., `a52d1314` for QakBot).
+- **Suricata `fileinfo`** – Alert on PE files with `entropy > 7.5` and `size > 1MB` transferred over non-standard ports (e.g., `4444/tcp`).
+
+**Hunting Queries:**
+- **Splunk:** `index=win_eventlogs EventCode=10 ParentImage="*\\explorer.exe" Image!="C:\\Windows\\*" | stats count by Image, CommandLine`
+- **Elastic:** `event.code: 8 and process.parent.name: "powershell.exe" and winlog.event_data.TargetImage: "svchost.exe"`
+
+**Sources:**
+- [MITRE ATT&CK: Process Hollowing (T1055.012)](https://attack.mitre.org/techniques/T1055/012/)
+- [CISA: Detecting DLL Side-Loading (T1574.002)](https://www.cisa.gov/resources-tools/services/detecting-dll-side-loading)
+
 ## Sources
 Claim → source mapping (all URLs are official tool docs/repos, Microsoft Learn, MITRE ATT&CK, or Security Onion docs):
 
@@ -239,3 +285,9 @@ Claim → source mapping (all URLs are official tool docs/repos, Microsoft Learn
 - https://www.crowdstrike.com/blog/common-malware-analysis-mistakes/
 
 <!-- cyberlab-enriched: v3 -->
+- https://docs.microsoft.com/en-us/windows/win32/debug/pe-format
+- https://www.sans.org/white-papers/2696/
+- https://attack.mitre.org/techniques/T1055/012/
+- https://www.cisa.gov/resources-tools/services/detecting-dll-side-loading
+
+<!-- cyberlab-enriched: v4 -->
