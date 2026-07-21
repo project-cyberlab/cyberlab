@@ -147,6 +147,42 @@ pdf-parser --object 4 --filter --raw exercise/sample.pdf
 - **T1053.005** — Scheduled Task (if payload creates scheduled tasks). https://attack.mitre.org/techniques/T1053/005/
 - **DFIR phase:** Identification and Examination — triage and static analysis of a suspicious document artifact before dynamic detonation.
 
+
+### Essential Commands & Features
+
+The following commands and flags expand your analysis capabilities with `pdfid` and `pdf-parser`, enabling deeper inspection of PDF files for malicious artifacts. Use these when initial scans reveal suspicious elements or when investigating **T1566.002 (Phishing: Spearphishing Link)** or **T1559.001 (Inter-Process Communication: Component Object Model)** indicators.
+
+#### **`pdfid` Extended Analysis**
+- **`-e` (Extended Set)**: Scans for additional keywords (e.g., `/JS`, `/OpenAction`, `/Launch`) beyond the default set. Critical for detecting **T1566.002** (phishing via embedded links).
+  ```bash
+  pdfid -e suspicious.pdf
+  ```
+- **`-a` (All Keywords)**: Displays counts for *all* PDF keywords, including rare or obfuscated ones. Useful for uncovering **T1559.001** (COM hijacking via `/AcroForm`).
+  ```bash
+  pdfid -a malicious.pdf
+  ```
+
+#### **`pdf-parser` Targeted Inspection**
+- **`-f` (Filter)**: Extracts objects matching a specific string (e.g., `/JavaScript`). Ideal for isolating **T1566.002** payloads.
+  ```bash
+  pdf-parser -f "/JavaScript" exploit.pdf
+  ```
+- **`-w` (Raw Output)**: Dumps raw object content, preserving hex encoding or obfuscation. Essential for analyzing **T1027.001 (Obfuscated Files or Information)**.
+  ```bash
+  pdf-parser -w -o 12 suspicious.pdf
+  ```
+- **`-o` (Object ID)**: Focuses on a single object (e.g., `-o 5`). Combine with `-w` to inspect **T1559.001** COM objects.
+  ```bash
+  pdf-parser -o 5 -w document.pdf
+  ```
+
+**Sources**:
+- [Didier Stevens’ PDF Tools Documentation](https://blog.didierstevens.com/programs/pdf-tools/)
+- [CERT-EU PDF Analysis Guide](https://cert.europa.eu/static/WhitePapers/CERT-EU-SWP_17-002_PDF_Analysis.pdf)
+
+### Threat Hunting & Detection Engineering
+To detect and hunt threats related to PDF analysis, focus on techniques such as [T1588: Obtain Capabilities](https://attack.mitre.org/techniques/T1588/) and [T1590: Gather Technical Data](https://attack.mitre.org/techniques/T1590/), which involve adversaries gathering information about the target environment and its capabilities. Analyze Windows Event IDs related to process creation (ID 4688) and command-line arguments to identify suspicious activity. In network logs, inspect Zeek's `http` log for unusual User-Agent headers or Suricata's `http` events for malicious PDF downloads. Threat hunters can pivot on PDF metadata, such as creator or author fields, to identify potentially malicious documents. Additionally, monitor system calls related to PDF parsing libraries to detect exploitation attempts. For more information on threat hunting and detection engineering, visit the [Cyber and Infrastructure Security Agency (CISA)](https://www.cisa.gov/) and [National Institute of Standards and Technology (NIST)](https://www.nist.gov/) websites for guidance on detecting and responding to cyber threats.
+
 ## Sources
 Claim → source mapping (all URLs are to official/authoritative pages):
 
@@ -179,3 +215,10 @@ Claim → source mapping (all URLs are to official/authoritative pages):
 - [YARA rule authoring & threat hunting](../21-yara-authoring/README.md) -- same learning path (Deep-dives); write rules to detect the PDF keywords/IOCs found here.
 
 <!-- cyberlab-enriched: v2 -->
+- https://cert.europa.eu/static/WhitePapers/CERT-EU-SWP_17-002_PDF_Analysis.pdf
+- https://attack.mitre.org/techniques/T1588/
+- https://attack.mitre.org/techniques/T1590/
+- https://www.cisa.gov/
+- https://www.nist.gov/
+
+<!-- cyberlab-enriched: v3 -->
