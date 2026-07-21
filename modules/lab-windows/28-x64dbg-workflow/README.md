@@ -189,6 +189,63 @@ bphws 0x00403000, "x"
 ### Threat Hunting & Detection Engineering
 To enhance threat hunting and detection engineering in the context of x64dbg workflow, focus on identifying techniques that involve modifying system binaries or executing malicious code in memory. For instance, **T1497: Virtualization/Sandbox Evasion** and **T1610: Windows Management Instrumentation**, are techniques that can be detected through careful analysis of system and application logs. Monitoring Windows Event IDs such as 4688 (Process Creation) for unusual command line arguments or parent-child process relationships can help in detecting these techniques. Additionally, analyzing network traffic with tools like Zeek or Suricata for signs of WMI (Windows Management Instrumentation) abuse, such as unusual WMI query patterns, can aid in threat hunting. Pivoting on these findings, investigators can look into system calls, API hooks, or other indicators of compromise that suggest evasion or WMI exploitation. For more detailed information on threat hunting and detection techniques, visit the [Cybok Knowledge Base](https://www.cybok.org/) or [NCSC-NL Open Source](https://github.com/NCSC-NL/open-source).
 
+
+### Essential Commands & Features
+
+Master these **undemonstrated** x64dbg capabilities to accelerate reverse-engineering and malware analysis:
+
+1. **Conditional Breakpoints**
+   Use when execution hits a loop or API call *only under specific conditions* (e.g., `EAX == 0xDEADBEEF`). Right-click a breakpoint → *Edit* → enter expression, e.g., `[EAX]==0xDEADBEEF`. Critical for analyzing **T1059.003 (Command and Scripting Interpreter: Windows Command Shell)** where adversaries obfuscate payloads via environment variables.
+   ```bash
+   ; Example: Break if WriteProcessMemory is called with target PID 1234
+   [@arg3]==1234
+   ```
+
+2. **Scripting API**
+   Automate repetitive tasks (e.g., dumping unpacked code) via Python or x64dbg’s native `.scr` scripts. Load scripts via *File → Script* or `scriptload("C:\path\dump_memory.scr")`. Vital for **T1562.001 (Impair Defenses: Disable or Modify Tools)** where malware disables AV before execution.
+   ```python
+   # Python example: Dump .text section to file
+   from x64dbg import *
+   dbg.memdump(0x401000, 0x1000, "C:\\dump.bin")
+   ```
+
+3. **Memory Map/Section Analysis**
+   Inspect memory regions (*View → Memory Map*) to identify injected code or unpacked sections. Right-click a region → *Follow in Dump* to analyze raw bytes. Key for detecting **T1055.002 (Process Injection: Portable Executable Injection)**.
+   ```bash
+   ; CLI: List all executable sections
+   mem.findall("PAGE_EXECUTE_READWRITE")
+   ```
+
+4. **Hardware Breakpoints**
+   Set on *read/write/execute* of specific addresses (e.g., `DR0`–`DR3`). Right-click instruction → *Breakpoint → Hardware, on Execution*. Ideal for tracking **T1106 (Native API)** calls without software breakpoint artifacts.
+   ```bash
+   ; Set hardware BP on read of 0x403000
+   bphws 0x403000, "r"
+   ```
+
+**Sources**:
+- [x64dbg Scripting Documentation (GitBook)](https://x64dbg.com/script/)
+- [MITRE ATT&CK: T1059.003](https://attack.mitre.org/techniques/T1059/003/) | [T1562.00
+
+### Adversary Emulation & Red-Team Perspective
+
+From an adversary’s perspective, **x64dbg** is a powerful tool for dynamic binary analysis, enabling attackers to reverse engineer, modify, and weaponize legitimate software or malware. A common tactic involves **process injection (T1055.004: Asynchronous Procedure Call)** to execute malicious code within a trusted process, evading detection by blending into legitimate behavior. Attackers may use x64dbg to identify injection points, patch memory, or bypass security controls (e.g., ASLR, DEP) by analyzing runtime behavior. Another key technique is **obfuscated files or information (T1027.009: Embedded Payloads)**, where adversaries embed malicious payloads within benign executables, using x64dbg to debug and refine evasion tactics (e.g., API unhooking, string encryption).
+
+**Artifacts left behind** include:
+- Modified memory regions (e.g., `.text` section patches).
+- Unusual process handles or threads (e.g., `CreateRemoteThread` calls).
+- Debugger-specific registry keys (e.g., `HKLM\SOFTWARE\Microsoft\Windows NT\CurrentVersion\AeDebug`).
+- Logs of API calls (e.g., `VirtualAllocEx`, `WriteProcessMemory`).
+
+**Evasion considerations** include:
+- Anti-debugging checks (e.g., `IsDebuggerPresent`, `NtQueryInformationProcess`).
+- Timing-based evasion (e.g., `rdtsc` instruction analysis).
+- Disabling ETW or AMSI via runtime patches.
+
+For further reading:
+- [FireEye: Process Injection Techniques](https://www.fireeye.com/blog/threat-research/2020/03/six-facts-about-address-space-layout-randomization-on-windows.html)
+- [CrowdStrike: Adversary Tradecraft and TTPs](https://www.crowdstrike.com/blog/tech-center/process-injection/)
+
 ## Sources
 Claim → authoritative source mapping (all URLs are real, official/vendor/authoritative pages):
 
@@ -236,3 +293,9 @@ Claim → authoritative source mapping (all URLs are real, official/vendor/autho
 - https://github.com/NCSC-NL/open-source
 
 <!-- cyberlab-enriched: v3 -->
+- https://x64dbg.com/script/
+- https://attack.mitre.org/techniques/T1059/003/
+- https://www.fireeye.com/blog/threat-research/2020/03/six-facts-about-address-space-layout-randomization-on-windows.html
+- https://www.crowdstrike.com/blog/tech-center/process-injection/
+
+<!-- cyberlab-enriched: v4 -->
