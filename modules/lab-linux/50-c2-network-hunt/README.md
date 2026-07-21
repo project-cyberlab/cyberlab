@@ -178,6 +178,39 @@ Leverage Suricata’s `fileinfo` keyword to detect **Non-Application Layer Proto
 ### Adversary Emulation & Red-Team Perspective
 Adversaries may leverage the network hunting environment to their advantage by employing techniques such as [T1204](https://attack.mitre.org/techniques/T1204) - User Execution, where they trick users into executing malicious commands or scripts, and [T1218](https://attack.mitre.org/techniques/T1218) - Signed Binary Proxy Execution, which allows them to execute malicious code by proxying it through signed binaries. To achieve this, attackers may create malicious artifacts such as suspicious scripts, executable files, or modified system binaries. Network defenders should be aware of these tactics and monitor for signs of adversary emulation, such as unusual network activity or changes to system files. To evade detection, attackers may use code obfuscation or anti-debugging techniques, making it essential for defenders to employ robust detection and analysis tools. For more information on adversary emulation and red-team tactics, visit the [Cyber and Infrastructure Security Agency (CISA)](https://www.cisa.gov/) and [NSA Cybersecurity](https://www.nsa.gov/What-We-Do/Cybersecurity/) websites.
 
+
+### Essential Commands & Features
+
+The following `tshark` commands and features unlock advanced analysis capabilities not yet demonstrated in this module. Use them to accelerate threat hunting and detect evasion techniques.
+
+#### **1. Protocol Hierarchy Statistics (`-z io,phs`)**
+When investigating anomalous traffic (e.g., **T1090.003 Proxy: Multi-hop Proxy** or **T1572 Protocol Tunneling**), generate a protocol hierarchy to identify unexpected encapsulation or covert channels:
+```bash
+tshark -r capture.pcap -q -z io,phs
+```
+*Use case*: Spot unusual protocols (e.g., DNS tunneling via **T1071.004 Application Layer Protocol: DNS**) or nested traffic (e.g., HTTP over TLS).
+
+#### **2. TCP Stream Extraction (`-q -z follow,tcp,ascii`)**
+Extract and reconstruct full TCP streams for analysis of command-and-control (C2) traffic (e.g., **T1105 Ingress Tool Transfer** or **T1568.001 Dynamic Resolution: Fast Flux DNS**):
+```bash
+tshark -r capture.pcap -q -z follow,tcp,ascii,1
+```
+*Use case*: Inspect plaintext C2 commands, exfiltrated data, or malicious payloads in streams. Replace `1` with the stream index from `tshark -r capture.pcap -q -z io,phs`.
+
+#### **3. Conversation Statistics (`-z conv,tcp`)**
+Map network conversations to detect lateral movement (**T1021.001 Remote Services: Remote Desktop Protocol**) or beaconing:
+```bash
+tshark -r capture.pcap -q -z conv,tcp
+```
+*Use case*: Identify unusual endpoints or high-volume connections indicative of data staging.
+
+**Sources**:
+- [Wireshark’s `-z` Statistics Documentation](https://www.wireshark.org/docs/man-pages/tshark.html#:~:text=-z%20%3Cstatistics%3E)
+- [MITRE ATT&CK: T1090.003 and T1572](https://attack.mitre.org/techniques/T1090/003/)
+
+### Common Pitfalls & Result Validation
+When conducting network hunts, analysts often make mistakes that can lead to false conclusions, such as misinterpreting network traffic patterns or overlooking crucial indicators of compromise. For instance, failing to account for legitimate network activity can result in false positives, while neglecting to monitor for techniques like **T1588: Obtain Capabilities** or **T1595: Active Scanning** can lead to missed detections. To validate findings, analysts should verify their results against multiple data sources and consider the broader context of the network traffic. It's also essential to stay up-to-date with the latest threat intelligence and tactics, techniques, and procedures (TTPs) used by adversaries. By doing so, analysts can avoid common pitfalls and ensure accurate results. For more information on network hunting and threat detection, visit the Cyber and Infrastructure Security Agency's (CISA) website at [https://www.cisecurity.org](https://www.cisecurity.org) or the Department of Homeland Security's (DHS) Cybersecurity and Infrastructure Security Agency (CISA) page on [https://us-cert.cisa.gov](https://us-cert.cisa.gov).
+
 ## Sources
 Claim → source mapping (all URLs are official/authoritative):
 
@@ -218,3 +251,9 @@ Claim → source mapping (all URLs are official/authoritative):
 - https://www.nsa.gov/What-We-Do/Cybersecurity/
 
 <!-- cyberlab-enriched: v2 -->
+- https://www.wireshark.org/docs/man-pages/tshark.html#:~:text=-z%20%3Cstatistics%3E
+- https://attack.mitre.org/techniques/T1090/003/
+- https://www.cisecurity.org](https://www.cisecurity.org
+- https://us-cert.cisa.gov](https://us-cert.cisa.gov
+
+<!-- cyberlab-enriched: v3 -->
