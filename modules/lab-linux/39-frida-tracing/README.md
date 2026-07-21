@@ -175,6 +175,54 @@ timeout 8 frida-trace -f ./target -i getenv
 - **T1574.001 — DLL Search Order Hijacking** (Frida Gadget can be embedded in a target process to bypass security checks). https://attack.mitre.org/techniques/T1574/001/
 - DFIR phase: **Examination / Analysis** (dynamic behavioral analysis of a live process during malware examination). Source: NIST SP 800-86, *Guide to Integrating Forensic Techniques into Incident Response* (Collection → Examination → Analysis → Reporting) — https://csrc.nist.gov/publications/detail/sp/800-86/final.
 
+
+### Essential Commands & Features
+
+Frida’s **Stalker** provides dynamic code coverage by tracing executed instructions, ideal for analyzing obfuscated logic or unpacking routines. Use it to track execution flow in real-time:
+```javascript
+Interceptor.attach(targetFunc, {
+  onEnter: function(args) {
+    Stalker.follow(this.threadId, {
+      events: { call: true, ret: true },
+      onReceive: function(events) {
+        console.log(Stalker.parse(events));
+      }
+    });
+  }
+});
+```
+*When to use*: Unpacking malware (e.g., **T1027.002: Obfuscated Files or Information: Software Packing**) or analyzing JIT-compiled code.
+
+For **memory scanning**, `Memory.scan` locates patterns (e.g., encryption keys, injected payloads) in process memory:
+```javascript
+Memory.scan(ptr("0x100000000"), 0x1000, "dead beef", {
+  onMatch: function(address, size) {
+    console.log(`Found at ${address}`);
+  }
+});
+```
+*When to use*: Detecting **T1622: Debugger Evasion** or extracting runtime artifacts.
+
+For **macOS/iOS targets**, hook Objective-C/Swift APIs to intercept method calls:
+```javascript
+const { ObjC } = NativePointer;
+const className = "NSURL";
+const method = "- URLWithString:";
+Interceptor.attach(ObjC.classes[className][method].implementation, {
+  onEnter: function(args) {
+    console.log(`URL: ${ObjC.Object(args[2])}`);
+  }
+});
+```
+*When to use*: Monitoring **T1555: Credentials from Password Stores** (e.g., Keychain access).
+
+**Sources**:
+- [Frida Stalker Docs](https://frida.re/docs/stalker/)
+- [MITRE ATT&CK T1622](https://attack.mitre.org/techniques/T1622/)
+
+### Threat Hunting & Detection Engineering
+To detect and hunt threats using Frida tracing, focus on identifying suspicious behavior related to techniques such as [T1218](https://attack.mitre.org/techniques/T1218) - "Signed Binary Proxy Execution" and [T1484](https://attack.mitre.org/techniques/T1484) - "Domain Policy Modification". Monitor Windows Event IDs 4688 and 4703 for signs of executable file creation and modification, which could indicate an adversary attempting to proxy execute a binary. Analyze the `CommandLine` field in these logs to identify suspicious command-line arguments. Additionally, inspect DNS query logs for unusual domain name resolutions, which may indicate an attempt to modify domain policies. Threat hunters can pivot on these findings by examining network traffic captures using Zeek or Suricata, focusing on HTTP requests to unknown or newly registered domains. For more information on threat hunting and detection engineering, visit the [Cybersecurity and Infrastructure Security Agency (CISA)](https://www.cisa.gov/) and [NSA Cybersecurity](https://www.nsa.gov/what-we-do/cybersecurity/) websites.
+
 ## Sources
 Claim → source mapping (all URLs are official/authoritative):
 
@@ -210,3 +258,11 @@ Claim → source mapping (all URLs are official/authoritative):
 - [Plaso super-timeline deep-dive](../23-plaso-supertimeline/README.md) -- same learning path (Deep-dives); place dynamic-analysis findings on a forensic timeline.
 
 <!-- cyberlab-enriched: v2 -->
+- https://frida.re/docs/stalker/
+- https://attack.mitre.org/techniques/T1622/
+- https://attack.mitre.org/techniques/T1218
+- https://attack.mitre.org/techniques/T1484
+- https://www.cisa.gov/
+- https://www.nsa.gov/what-we-do/cybersecurity/
+
+<!-- cyberlab-enriched: v3 -->
