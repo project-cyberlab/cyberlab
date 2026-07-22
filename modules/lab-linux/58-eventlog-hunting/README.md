@@ -21,34 +21,55 @@ Windows Event Logs (.evtx) are the richest host telemetry in an intrusion. Hayab
 Confirm the binaries run: `hayabusa help` and `chainsaw help`. Point them at the provided sample `.evtx` set. Both are cross-platform CLI tools that run on the SIFT Linux host.
 
 ## Guided walkthrough
-1. Generate a ranked detection timeline: `hayabusa csv-timeline -d ./evtx -o timeline.csv`.
-2. Triage the highest-severity hits first (critical/high) and note their Event IDs + timestamps.
-3. Hunt with Chainsaw + Sigma: `chainsaw hunt ./evtx -s sigma/ --mapping mappings/sigma-event-logs-all.yml`.
-4. Pivot on a lead — e.g. a 7045 service install or 4104 script block — and pull surrounding events.
-5. Export normalized events with `EvtxECmd.exe -d ./evtx --csv . --csvf events.csv` for timeline correlation.
+1. Generate a ranked detection timeline: `hayabusa csv-timeline -d ./evtx -o timeline.csv`. The `-d` flag specifies the directory containing `.evtx` files, and `-o` sets the output file. This command parses all logs, matches events against its built-in Sigma rules, and outputs a timeline of detections ranked by severity (Critical, High, Medium, Low, Informational) [Hayabusa Docs].
+2. Triage the highest-severity hits first (critical/high) and note their Event IDs + timestamps. For example, a Critical alert for "Suspicious PowerShell Execution" will list the Event ID (like 4104), the timestamp, and the affected host. This prioritization is central to the tool's design [Hayabusa Docs].
+3. Hunt with Chainsaw + Sigma: `chainsaw hunt ./evtx -s sigma/ --mapping mappings/sigma-event-logs-all.yml`. The `-s` flag points to a directory of Sigma rules (you can clone the official SigmaHQ repository), and the `--mapping` flag specifies the YAML file that maps Sigma rule log sources to Windows Event Log channels. This allows Chainsaw to apply a broad rule set [Chainsaw Docs].
+4. Pivot on a lead — e.g., a 7045 service install or 4104 script block — and pull surrounding events. Use `EvtxECmd` to dump all events from the specific log file: `EvtxECmd -f Security.evtx --csv .` to get a CSV you can filter by timestamp and Event ID. This contextualizes the detection within the sequence of events on the host [Eric Zimmerman's Tools].
+5. Export normalized events with `EvtxECmd.exe -d ./evtx --csv . --csvf events.csv` for timeline correlation. This creates a single, consolidated CSV file from all `.evtx` files in the directory, which can be imported into timeline analysis tools like Timesketch or for manual review in a spreadsheet.
 
 ## Hands-on exercise
 Run Hayabusa against the sample `./evtx` set, identify the highest-severity detection, and report its Event ID, technique, and timestamp. Confirm the same activity with a Chainsaw Sigma hunt.
 
 ## SOC analyst perspective
-This is the daily bread of log-based detection: analysts run Sigma-driven sweeps over collected event logs to find lateral movement, persistence, and execution, then build a timeline from the ranked hits instead of reading raw logs.
+This is the daily bread of log-based detection: analysts run Sigma-driven sweeps over collected event logs to find lateral movement, persistence, and execution, then build a timeline from the ranked hits instead of reading raw logs. Detection engineering focuses on mapping specific event patterns to MITRE ATT&CK techniques. For example:
+- **Detection of T1059.001 (PowerShell)**: A Sigma rule may trigger on Windows Event ID 4104 (Script Block Logging) where the `ScriptBlockText` field contains high-risk keywords like `-EncodedCommand` or `IEX` [Sigma Rule: Suspicious PowerShell Keywords].
+- **Detection of T1543.003 (Windows Service)**: Event ID 7045 (A service was installed in the system) is a strong persistence indicator. Detection logic involves correlating 7045 events with process creation events (4688) where the parent process is unusual (e.g., `powershell.exe` or a user-writable directory) [MITRE ATT&CK T1543.003].
+- **Detection of T1070.001 (Log Clearance)**: Event ID 1102 (The audit log was cleared) from the Security log is a direct artifact. In Security Onion, a Suricata alert can be generated for network traffic to the host coinciding with the log clear time, while Zeek's `weird.log` might note anomalous gaps in log-forwarding connections.
+- **Pivoting in Security Onion**: After identifying a suspicious IP from an event log (e.g., a failed logon source in Event ID 4625), an analyst can pivot in Elastic to view all Suricata alerts (`event.module:suricata`) and Zeek connection logs (`zeek.conn.id.orig_h:<IP>`) from that IP to assess network impact.
 
 ## Attacker perspective
-Attackers clear logs (`wevtutil cl`), use living-off-the-land binaries, and obfuscate PowerShell to blend in. Ranked Sigma detections and script-block logging (4104) surface these despite evasion.
+Attackers clear logs (`wevtutil cl`), use living-off-the-land binaries, and obfuscate PowerShell to blend in. Ranked Sigma detections and script-block logging (4104) surface these despite evasion. Concrete TTPs and artifacts include:
+- **T1070.001 (Indicator Removal on Host)**: Using `wevtutil cl security` clears the Security log, generating Event ID 1102 as a tell-tale artifact. Attackers may also disable logging via `auditpol /set /subcategory:"Process Creation" /success:disable /failure:disable`, which can be detected by changes to Registry key `HKLM\SECURITY\Policy\PolAdtEv` [MITRE ATT&CK T1070.001].
+- **T1059.001 (Command and Scripting Interpreter: PowerShell)**: To evade script block logging, attackers may use reflection-based invocation, `-WindowStyle Hidden`, or execution via `regsvr32` (T1218.010). However, Event ID 4103 (PowerShell Command Activity) may still capture command lines, and Sysmon Event ID 1 (Process creation) will record the parent-child relationship [MITRE ATT&CK T1059.001].
+- **T1547.001 (Boot or Logon Autostart Execution: Registry Run Keys)**: Persistence via `HKLM\Software\Microsoft\Windows\CurrentVersion\Run` leaves a trace in the Registry hive and can generate Event ID 4688 (process creation) for the persisted binary at user logon (Event ID 4624). Sigma rules detect modifications to these autostart locations [MITRE ATT&CK T1547.001].
+- **T1562.001 (Impair Defenses: Disable or Modify Tools)**: Attackers may stop security services using `net stop "Windows Defender"` or `sc config WinDefend start= disabled`. This action can be logged in System event logs (Event ID 7034, 7036) and as a process creation event for `net.exe` or `sc.exe` [MITRE ATT&CK T1562.001].
 
 ## Answer key
-Hayabusa ranks detections by severity using Sigma rules; the highest hit corresponds to the injected suspicious activity (e.g. T1059.001 PowerShell). Chainsaw's Sigma hunt confirms the same event via a different engine.
+Hayabusa ranks detections by severity using Sigma rules; the highest hit corresponds to the injected suspicious activity (e.g., T1059.001 PowerShell). Chainsaw's Sigma hunt confirms the same event via a different engine.
 
 ## MITRE ATT&CK & DFIR phase
-- **T1059.001** — PowerShell — script-block logging (Event ID 4104) surfaces malicious PowerShell
-- **T1543.003** — Windows Service — service install (Event ID 7045) is a common persistence signal
-- **T1070.001** — Clear Windows Event Logs — gaps/clears are themselves a detection
+- **T1059.001** — PowerShell — script-block logging (Event ID 4104) surfaces malicious PowerShell [MITRE ATT&CK T1059.001]
+- **T1543.003** — Windows Service — service install (Event ID 7045) is a common persistence signal [MITRE ATT&CK T1543.003]
+- **T1070.001** — Clear Windows Event Logs — gaps/clears are themselves a detection [MITRE ATT&CK T1070.001]
+- **T1547.001** — Registry Run Keys / Startup Folder — persistence via run keys detectable in registry and logon events [MITRE ATT&CK T1547.001]
+- **T1562.001** — Impair Defenses: Disable or Modify Tools — stopping security services leaves event log traces [MITRE ATT&CK T1562.001]
 
 ## Sources
-- Hayabusa: https://github.com/Yamato-Security/hayabusa
-- Chainsaw: https://github.com/WithSecureLabs/chainsaw
-- Sigma project: https://sigmahq.io/
+- Hayabusa: https://github.com/Yamato-Security/hayabusa (Official documentation and rule set)
+- Chainsaw: https://github.com/WithSecureLabs/chainsaw (Official documentation and mappings)
+- Sigma project: https://sigmahq.io/ (Sigma specification and rule repository)
+- Eric Zimmerman's Tools: https://ericzimmerman.github.io/ (EvtxECmd documentation and usage)
+- MITRE ATT&CK T1059.001: https://attack.mitre.org/techniques/T1059/001/ (Technique details and procedure examples)
+- MITRE ATT&CK T1543.003: https://attack.mitre.org/techniques/T1543/003/
+- MITRE ATT&CK T1070.001: https://attack.mitre.org/techniques/T1070/001/
+- MITRE ATT&CK T1547.001: https://attack.mitre.org/techniques/T1547/001/
+- MITRE ATT&CK T1562.001: https://attack.mitre.org/techniques/T1562/001/
+- Sigma Rule: Suspicious PowerShell Keywords (Example): https://github.com/SigmaHQ/sigma/blob/master/rules/windows/powershell/powershell_suspicious_keywords.yml
 
 ## Related modules
-- - 06-windows-artifact-libs — parse raw .evtx with libevtx
-- - 49-intrusion-timeline-case — build the incident timeline
+- [Scenario: ransomware memory investigation](../47-ransomware-memory-case/README.md) -- same learning path (Scenarios)
+- [Scenario: phishing document investigation](../48-phishing-doc-case/README.md) -- same learning path (Scenarios)
+- [Scenario: intrusion timeline reconstruction](../49-intrusion-timeline-case/README.md) -- same learning path (Scenarios)
+- [Scenario: C2 network traffic hunt](../50-c2-network-hunt/README.md) -- same learning path (Scenarios)
+
+<!-- cyberlab-enriched: v6 -->
