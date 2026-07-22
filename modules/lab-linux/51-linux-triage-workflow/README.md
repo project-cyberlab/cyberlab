@@ -384,6 +384,54 @@ detection:
 | **MITRE ATT&CK**              | T1059.003 – Unix Shell |
 | **Reference**                 | https://attack.mitre.org/techniques/T1059/003/ |
 
+
+### Essential Commands & Features
+
+When triaging Linux systems, **The Sleuth Kit (TSK)** provides powerful block-level analysis capabilities that are critical for uncovering hidden artifacts. Below are three **undemonstrated but essential** commands for deep forensic inspection:
+
+1. **`blkcat` – Extract Raw Block Data**
+   Use to dump the contents of a specific disk block, ideal for recovering deleted files or examining slack space.
+   **Example:**
+   ```bash
+   blkcat -o 2048 /dev/sdb 12345 > block_12345.raw
+   ```
+   *When to use:* Investigate **T1074.001 (Data Staged)** or **T1560.001 (Archive Collected Data)** where adversaries hide data in unallocated blocks.
+
+2. **`blkls` – List/Extract Unallocated Blocks**
+   Extracts all unallocated blocks (slack space) for offline analysis, revealing remnants of deleted files.
+   **Example:**
+   ```bash
+   blkls -o 2048 /dev/sdb > unallocated_blocks.raw
+   ```
+   *When to use:* Detect **T1070.004 (File Deletion)** or **T1485 (Data Destruction)** where attackers attempt to cover tracks.
+
+3. **`hfind` – Hash Lookup (NSRL/Hash Sets)**
+   Quickly checks if a file hash exists in a known-good database (e.g., NSRL) or custom hash sets.
+   **Example:**
+   ```bash
+   hfind -i nsrl-md5 /path/to/hashes.txt 098f6bcd4621d373cade4e832627b4f6
+   ```
+   *When to use:* Identify **T1140 (Deobfuscate/Decode Files or Information)** or **T1204.002 (Malicious File)** by filtering known-good files.
+
+**Sources:**
+- [TSK Official Documentation: `blkcat`, `blkls`, `hfind`](https://www.sleuthkit.org/sleuthkit/man/)
+- [DFIR Review: Slack Space Analysis](https://www.dfir.review/)
+
+### Adversary Emulation & Red-Team Perspective
+
+From an attacker’s perspective, Linux triage workflows present opportunities to evade detection, maintain persistence, and exfiltrate data. Adversaries often **abuse legitimate system tools** to blend in with normal activity, leveraging **Living-off-the-Land Binaries (LOLBins)** to execute malicious actions. For example, an attacker may use `curl` or `wget` to download additional payloads (**[T1105: Ingress Tool Transfer](https://attack.mitre.org/techniques/T1105/)**), disguising traffic as routine updates. They may also **obfuscate scripts** using `base64` encoding or compression (e.g., `gzip`) to bypass signature-based detection (**[T1027.010: Obfuscated Files or Information: Encrypted/Encoded File](https://attack.mitre.org/techniques/T1027/010/)**).
+
+Attackers frequently **manipulate timestamps** (`touch -r`) or **hide files in alternate data streams** (on filesystems like XFS or ext4 with extended attributes) to evade timeline analysis. Persistence mechanisms, such as **cron jobs** or **systemd services**, may be disguised as legitimate processes (e.g., `systemd-analyze` masquerading as a performance tool). Artifacts left behind include:
+- Modified `~/.bashrc`, `/etc/crontab`, or `/etc/systemd/system/` entries.
+- Unusual network connections in `ss -tulnp` or `netstat` output.
+- Suspicious process trees (e.g., `bash` spawning `curl` or `python`).
+
+Evasion considerations include **clearing logs** (`rm -rf /var/log/*`) or **disabling auditd** to hinder forensic analysis. Red teams should test detection gaps by simulating these TTPs in controlled environments.
+
+**Sources:**
+- [MITRE ATT&CK: Linux Techniques](https://attack.mitre.org/matrices/enterprise/linux/)
+- [Red Canary: Linux Threat Detection](https://redcanary.com/threat-detection/linux/)
+
 ## Sources
 **Claim → Source Mapping (all URLs are official/authoritative):**
 
@@ -455,3 +503,9 @@ detection:
 - https://attack.mitre.org/techniques/T1059/003/
 
 <!-- cyberlab-enriched: v5 -->
+- https://www.dfir.review/
+- https://attack.mitre.org/techniques/T1027/010/
+- https://attack.mitre.org/matrices/enterprise/linux/
+- https://redcanary.com/threat-detection/linux/
+
+<!-- cyberlab-enriched: v6 -->
