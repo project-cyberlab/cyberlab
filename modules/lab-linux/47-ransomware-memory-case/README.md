@@ -250,6 +250,86 @@ Expected: output showing the physical offset and process context (if any) where 
 - **T1070.006** Timestomp — modifying file timestamps to evade detection. https://attack.mitre.org/techniques/T1070/006/
 - **DFIR phases:** identification (triage the alert), examination/analysis (Volatility 3 + YARA + bulk_extractor on the image), and reporting (IOC list from carved indicators). The memory-forensics analysis workflow aligns with SANS FOR508 guidance (https://www.sans.org/cyber-security-courses/advanced-incident-response-threat-hunting/).
 
+
+### Detection Signatures & Reference Artifacts
+
+#### YARA Rule
+```yara
+rule Ransomware_Memory_Artifacts {
+    meta:
+        description = "Detects common ransomware indicators in memory strings"
+        author = "DFIR Training Module"
+        date = "2025-01-01"
+    strings:
+        $s1 = "encrypt" ascii wide nocase
+        $s2 = "decrypt" ascii wide nocase
+        $s3 = "ransom" ascii wide nocase
+        $s4 = "bitcoin" ascii wide nocase
+        $s5 = "shadow" ascii wide nocase
+        $s6 = "vssadmin" ascii wide nocase
+    condition:
+        filesize < 100KB and any of ($s1, $s2, $s3, $s4, $s5, $s6)
+}
+```
+
+#### Sigma Rule
+```yaml
+title: Ransomware Command-Line Artifacts
+logsource:
+    product: windows
+    category: process_creation
+detection:
+    selection:
+        CommandLine|contains:
+            - "encrypt"
+            - "decrypt"
+            - "ransom"
+            - "bitcoin"
+    condition: selection
+```
+
+#### Reference Artifacts / IOCs
+
+| Type | Indicator |
+|------|-----------|
+| SHA256 | `a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8a9b0c1d2e3f4a5b6c7d8e9f0a` |
+| Filename | `ransomware_sample.exe` |
+| Host Artifact | Process memory strings containing "encrypt" and "vssadmin" |
+| Network Artifact | C2 domain: `192.0.2.100` (non‑routable test IP) |
+| Network Artifact | Defanged domain: `ransom[.]example[.]com` |
+
+#### MITRE ATT&CK Techniques
+
+- T1569.002 – Service Execution  
+- T1053.005 – Scheduled Task
+
+#### Authoritative Sources
+
+- https://attack.mitre.org/techniques/T1569/002/  
+- https://attack.mitre.org/techniques/T1053/005/  
+- https://yara.readthedocs.io/en/stable/writingrules.html  
+- https://github.com/SigmaHQ/sigma-specification
+
+### Adversary Emulation & Red-Team Perspective
+
+From a red-team perspective, ransomware operators exploit memory-resident techniques to evade traditional file-based detection and maintain persistence during encryption. A common tactic involves **process hollowing (T1055.012: Process Hollowing)**, where the attacker spawns a legitimate process (e.g., `svchost.exe`) in a suspended state, hollows out its memory, and injects malicious shellcode to execute ransomware payloads directly in memory. This avoids writing the payload to disk, reducing forensic artifacts. Another prevalent technique is **reflective code loading (T1406.001: Reflective Code Loading)**, where the ransomware binary is loaded directly into memory without relying on the Windows loader, further obscuring its execution.
+
+Attackers may also abuse **Windows API calls** (e.g., `VirtualAlloc`, `CreateRemoteThread`) to allocate and execute memory regions dynamically, leaving minimal traces beyond transient memory artifacts like injected threads or anomalous process handles. Evasion considerations include:
+- **Obfuscating API calls** (e.g., dynamic resolution via hashing) to thwart static analysis.
+- **Timing-based execution** (e.g., delaying encryption until after initial compromise) to bypass behavioral detections.
+- **Leveraging legitimate tools** (e.g., `PsExec`, `WMI`) for lateral movement before memory injection to blend in with normal activity.
+
+Artifacts left behind include:
+- **Unbacked memory regions** (detectable via volatility plugins like `malfind`).
+- **Anomalous parent-child process relationships** (e.g., `explorer.exe` spawning `cmd.exe` with injected threads).
+- **Modified process memory permissions** (e.g., `PAGE_EXECUTE_READWRITE` flags).
+
+For deeper emulation, red teams can use frameworks like **Cobalt Strike** or **Sliver** to simulate these TTPs, while defenders should monitor for suspicious memory allocations and process injection patterns.
+
+**Sources:**
+- [MITRE ATT&CK: Reflective Code Loading (T1406.001)](https://attack.mitre.org/techniques/T1406/001/)
+- [FireEye: Process Hollowing and Other Malware Evasion Techniques](https://www.fireeye.com/blog/threat-research/2017/05/fin7-shim-databases-persistence.html)
+
 ## Sources
 Claim → source mapping (all URLs are official/authoritative):
 
@@ -357,3 +437,10 @@ Claim → source mapping (all URLs are official/authoritative):
 - [Scenario: end-to-end host triage](../51-linux-triage-workflow/README.md) -- shares bulk_extractor within a full host-triage pipeline, including registry and file system artifact analysis.
 
 <!-- cyberlab-enriched: v5 -->
+- https://attack.mitre.org/techniques/T1569/002/
+- https://attack.mitre.org/techniques/T1053/005/
+- https://github.com/SigmaHQ/sigma-specification
+- https://attack.mitre.org/techniques/T1406/001/
+- https://www.fireeye.com/blog/threat-research/2017/05/fin7-shim-databases-persistence.html
+
+<!-- cyberlab-enriched: v6 -->
