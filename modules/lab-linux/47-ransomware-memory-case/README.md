@@ -150,6 +150,17 @@ Concrete detection logic and pivots:
 
 Detection nuance: because ransomware often encrypts fast, the strongest early SOC signals are behavioral — spikes in `conn.log`/`dns.log` to unfamiliar destinations, shadow-copy deletion (**T1490**), and volume of file-modify events (e.g., **Sysmon Event ID 11** for file creation) — rather than a single AV hit. Correlate these with **Windows Event ID 4663** (File System Object Access) to detect mass encryption (https://docs.microsoft.com/en-us/windows/security/threat-protection/auditing/event-4663).
 
+**Detection Engineering & Threat Hunting Pivots**
+- **Process Injection Detection**: Monitor **Sysmon Event ID 8** (CreateRemoteThread) for threads created in a target process by a source process (e.g., `powershell.exe` injecting into `svchost.exe`). This detects **T1055** (Process Injection) and **T1055.001** (Dynamic-Link Library Injection). Correlate with **Sysmon Event ID 10** (ProcessAccess) to identify suspicious access patterns (e.g., `PROCESS_VM_WRITE` or `PROCESS_VM_OPERATION`). Use **Windows Event ID 4688** (Process Creation) to detect child processes of `explorer.exe` or `svchost.exe` with unusual command lines (e.g., `cmd.exe /c vssadmin delete shadows`). This maps to **T1059** (Command and Scripting Interpreter) and **T1490** (Inhibit System Recovery). (Sources: Microsoft Sysmon Documentation, MITRE ATT&CK T1055, T1055.001, T1059, T1490)
+- **Network-Based Detection**: Hunt for **T1071.001 (Web Protocols)** in **Zeek’s `http.log`** by filtering for unusual `user_agent` strings (e.g., `curl` or custom agents) or POST requests to `/pay` or `/api` endpoints. Pair this with **Suricata alerts** for known ransomware C2 IPs (e.g., `alert http any any -> $HOME_NET any (msg:"Ransomware C2 Beacon"; content:"/pay"; sid:1000002;)`). Detect **T1573.001 (Encrypted Channel: Symmetric Cryptography)** by analyzing **Zeek’s `ssl.log`** for unusual cipher suites (e.g., `TLS_RSA_WITH_AES_128_CBC_SHA`) or self-signed certificates. Use **Elasticsearch** to filter on `ssl.cipher: "TLS_RSA_WITH_AES_128_CBC_SHA"` and correlate with `destination.ip` from `conn.log`. (Sources: Zeek Log Reference, Suricata Rule Writing Guide, MITRE ATT&CK T1071.001, T1573.001)
+- **Registry and File System Detection**: Hunt for **T1112 (Modify Registry)** by querying **Windows Event ID 4657** (Registry Value Modified) for changes to `HKLM\System\CurrentControlSet\Services\VSS\Start` (value `0x4` disables VSS). This detects **T1490** (Inhibit System Recovery). Monitor **Sysmon Event ID 11** (FileCreate) for ransom notes (e.g., `*_HOW_TO_DECRYPT.txt`) or encrypted files (e.g., `*.locked`). Correlate with **Windows Event ID 4663** (File System Object Access) to detect mass encryption. (Sources: Microsoft Windows Event Log Documentation, MITRE ATT&CK T1112, T1490)
+- **Defense Evasion Detection**: Detect **T1070.001 (Clear Windows Event Logs)** by monitoring **Windows Event ID 1102** (Event Log Cleared). Correlate with **Sysmon Event ID 25** (ProcessTampering) to identify processes tampering with event logs. Hunt for **T1562.001 (Impair Defenses: Disable or Modify Tools)** by querying **Windows Event ID 4688** for processes launching `sc stop WinDefend` or `net stop wscsvc` (disabling Windows Defender or Security Center). (Sources: Microsoft Windows Event Log Documentation, MITRE ATT&CK T1070.001, T1562.001)
+- **Threat-Hunting Pivots**: Pivot from `conn.log` to `dns.log` to identify DGA (Domain Generation Algorithm) patterns in `query` fields (e.g., `^[a-z0-9]{10}\.com$`). This maps to **T1568.002 (Dynamic Resolution: Domain Generation Algorithms)**. Use `http.log` to hunt for unusual `uri` paths (e.g., `/c2` or `/api/key`) or `user_agent` strings (e.g., `Mozilla/5.0 (Windows NT 10.0; Win64; x64) EvilRansomware/1.0`). Create a dashboard to correlate `process.command_line` (from Sysmon Event ID 1) with `destination.ip` (from Zeek `conn.log`) to identify processes beaconing to known-bad IPs. Hunt for **T1059.001 (PowerShell)** by filtering on `process.name: "powershell.exe"` and `process.command_line: "*-enc*"` or `"*[Convert]::FromBase64String*"`. (Sources: Zeek Log Reference, Elastic Security Labs: Detecting Ransomware with Sysmon, MITRE ATT&CK T1568.002, T1059.001)
+
+**Advanced Detection: Lateral Movement & Persistence**
+- **Lateral Movement Detection**: Hunt for **T1570 (Lateral Tool Transfer)** by correlating **Zeek’s `smb_mapping.log`** for SMB file transfers with **Windows Event ID 4624** (Account Logon) for successful logons from the same source IP. Look for `smb_mapping.log.action` values like `SMB::FILE_OPEN` or `SMB::FILE_WRITE` to a network share, followed by **Windows Event ID 4688** (Process Creation) on the target host. This indicates the ransomware binary was transferred and executed laterally. (Sources: Zeek SMB Log Reference, Microsoft Event ID 4624, MITRE ATT&CK T1570)
+- **Persistence Detection**: Hunt for **T1547.001 (Registry Run Keys)** by querying **Windows Event ID 4657** (Registry Value Modified) for changes to `HKLM\Software\Microsoft\Windows\CurrentVersion\Run` or `HKCU\Software\Microsoft\Windows\CurrentVersion\Run`. Ransomware often adds entries to maintain persistence after reboot. Correlate with **Sysmon Event ID 13** (RegistryEvent) for `SetValue` operations on these keys. (Sources: Microsoft Event ID 4657, Sysmon Event ID 13, MITRE ATT&CK T1547.001)
+
 ## Attacker perspective
 An attacker deploying ransomware runs an encryptor from a temporary path, often injecting into or spawning from a legitimate process to blend in (**T1055** Process Injection, https://attack.mitre.org/techniques/T1055/; **T1036** Masquerading, https://attack.mitre.org/techniques/T1036/). They contact a C2 or payment portal and drop a ransom note file across directories (**T1486**, https://attack.mitre.org/techniques/T1486/). To evade detection, they may also use **T1027 (Obfuscated Files or Information)** to pack payloads or encode commands.
 
@@ -164,6 +175,27 @@ Concrete TTPs and the artifacts they leave in RAM:
   - Carved indicators (URLs, emails, keys) via bulk_extractor, which operates on raw bytes without filesystem dependencies.
 
 Attackers may also use **T1564.003 (Hide Artifacts: Hidden Window)** to run the encryptor in a hidden window, or **T1562.001 (Impair Defenses: Disable or Modify Tools)** to disable AV/EDR (https://attack.mitre.org/techniques/T1564/003/ and https://attack.mitre.org/techniques/T1562/001/). These techniques leave artifacts in memory, such as modified registry keys or process command lines.
+
+**Advanced Adversary Emulation & Evasion**
+- **Process Doppelgänging (T1055.013):** Attackers may use Windows Transactional NTFS (TxF) to create a modified copy of a legitimate executable (e.g., `notepad.exe`), inject the ransomware payload, and roll back the transaction—leaving no trace on disk. Memory artifacts include a process with a mismatched PEB (Process Environment Block): the original image name appears legitimate, but the process’s memory sections contain the encrypted payload and hollowed-out regions. (Source: CrowdStrike on Process Doppelgänging)
+- **Parent PID Spoofing (T1134.004):** Spawning the ransomware process under a trusted parent like `explorer.exe` or `svchost.exe` bypasses process ancestry heuristics. This spoofing leaves an artifact in the EPROCESS block’s `InheritedFromUniqueProcessId` field, which can be recovered via memory forensics. (Source: Mandiant on Parent PID Spoofing)
+- **Direct Syscalls & ETW Disabling:** To avoid user-mode API hooks, attackers use direct syscalls (e.g., Hell’s Gate / Halo’s Gate) and disable ETW (Event Tracing for Windows) to prevent telemetry. The red team also clears the VAD (Virtual Address Descriptor) using “dead drop” injection to hinder memory scanning. These emulated techniques mirror real-world ransomware operations and leave distinct forensic footprints for blue team analysis.
+
+**Common Pitfalls & Result Validation**
+Analysts often misinterpret ransomware memory artifacts due to **over-reliance on single indicators** or **ignoring process context**. A frequent mistake is assuming all suspicious strings (e.g., `.locked` extensions) confirm ransomware—these may stem from benign file operations or unrelated malware (e.g., **T1037.004: Boot or Logon Initialization Scripts**). Validate findings by cross-referencing process trees, loaded modules, and network connections (e.g., **T1071.004: DNS Application Layer Protocol**). For example, if `cmd.exe` spawns `vssadmin.exe` to delete shadow copies, check parent processes for signs of **T1491.001: Internal Defacement** (e.g., `wmic` or PowerShell invocations).
+
+False positives arise when analysts conflate **legitimate encryption tools** (e.g., BitLocker) with ransomware. To avoid this, verify:
+1. **Process injection** (e.g., **T1055.002: Portable Executable Injection**) via `malfind` or `dlllist` in Volatility.
+2. **Unusual child processes** (e.g., `notepad.exe` spawning `certutil.exe`).
+3. **Memory-resident payloads** by checking for hollowed processes or anomalous memory sections.
+
+Always correlate memory artifacts with disk/registry evidence (e.g., `UserAssist` keys for executed binaries). For authoritative validation, consult:
+- [CERT-EU’s ransomware memory forensics guide](https://cert.europa.eu/static/WhitePapers/CERT-EU-SWP_17_001_ransomware.pdf)
+- [FireEye’s memory analysis best practices](https://www.fireeye.com/content/dam/fireeye-www/services/pdfs/pf/ms/mandiant-memory-forensics.pdf)
+
+**Advanced Evasion: Timestomping & File Deletion**
+- **Timestomping (T1070.006):** Attackers modify file timestamps (e.g., `SetFileTime` API) to blend with legitimate files. Memory artifacts include `$STANDARD_INFORMATION` attribute changes in the MFT, which can be recovered via `windows.mftparser` in Volatility. (Source: MITRE ATT&CK T1070.006)
+- **File Deletion (T1070.004):** Ransomware deletes the encryptor binary after execution. Memory artifacts include `FILE_OBJECT` structures in kernel pools, recoverable via `windows.filescan` in Volatility. (Source: MITRE ATT&CK T1070.004)
 
 ## Answer key
 - **YARA:** `rule ransom_note_test` matches on `$a` ("HAVE BEEN ENCRYPTED"), `$b` ("LOCKBIT_TEST_MARKER"), and `$c` ("AES_KEY: ABCDEFGHIJKLMNOP").
@@ -205,71 +237,18 @@ Expected: output showing the physical offset and process context (if any) where 
 - **T1070.004** File Deletion — deleting the encryptor binary or ransom notes. https://attack.mitre.org/techniques/T1070/004/
 - **T1059.001** Command and Scripting Interpreter: PowerShell — encoded PowerShell commands for execution. https://attack.mitre.org/techniques/T1059/001/
 - **T1573.001** Encrypted Channel: Symmetric Cryptography — encrypted C2 communication. https://attack.mitre.org/techniques/T1573/001/
+- **T1055.013** Process Doppelgänging — advanced process injection technique using Windows Transactional NTFS (TxF). https://attack.mitre.org/techniques/T1055/013/
+- **T1134.004** Parent PID Spoofing — spoofing the parent process ID to evade detection. https://attack.mitre.org/techniques/T1134/004/
+- **T1568.002** Dynamic Resolution: Domain Generation Algorithms — DGA patterns in DNS queries. https://attack.mitre.org/techniques/T1568/002/
+- **T1562.001** Impair Defenses: Disable or Modify Tools — disabling AV/EDR. https://attack.mitre.org/techniques/T1562/001/
+- **T1564.003** Hide Artifacts: Hidden Window — running the encryptor in a hidden window. https://attack.mitre.org/techniques/T1564/003/
+- **T1071.004** DNS Application Layer Protocol — C2 communication over DNS. https://attack.mitre.org/techniques/T1071/004/
+- **T1037.004** Boot or Logon Initialization Scripts — persistence via startup scripts. https://attack.mitre.org/techniques/T1037/004/
+- **T1491.001** Internal Defacement — defacing internal systems as part of ransomware impact. https://attack.mitre.org/techniques/T1491/001/
+- **T1570** Lateral Tool Transfer — transferring ransomware binaries across the network. https://attack.mitre.org/techniques/T1570/
+- **T1547.001** Registry Run Keys — persistence via registry run keys. https://attack.mitre.org/techniques/T1547/001/
+- **T1070.006** Timestomp — modifying file timestamps to evade detection. https://attack.mitre.org/techniques/T1070/006/
 - **DFIR phases:** identification (triage the alert), examination/analysis (Volatility 3 + YARA + bulk_extractor on the image), and reporting (IOC list from carved indicators). The memory-forensics analysis workflow aligns with SANS FOR508 guidance (https://www.sans.org/cyber-security-courses/advanced-incident-response-threat-hunting/).
-
-### Threat Hunting & Detection Engineering
-Once you’ve extracted the ransomware’s process hive from memory, pivot to **live detection engineering** to hunt for similar tradecraft across the enterprise.
-
-**Detection Logic**
-1. **Process Injection Detection**:
-   - Monitor **Sysmon Event ID 8** (CreateRemoteThread) for threads created in a target process by a source process (e.g., `powershell.exe` injecting into `svchost.exe`). This detects **T1055** (Process Injection) and **T1055.001** (Dynamic-Link Library Injection). Correlate with **Sysmon Event ID 10** (ProcessAccess) to identify suspicious access patterns (e.g., `PROCESS_VM_WRITE` or `PROCESS_VM_OPERATION`).
-   - Use **Windows Event ID 4688** (Process Creation) to detect child processes of `explorer.exe` or `svchost.exe` with unusual command lines (e.g., `cmd.exe /c vssadmin delete shadows`). This maps to **T1059** (Command and Scripting Interpreter) and **T1490** (Inhibit System Recovery).
-
-2. **Network-Based Detection**:
-   - Hunt for **T1071.001 (Web Protocols)** in **Zeek’s `http.log`** by filtering for unusual `user_agent` strings (e.g., `curl` or custom agents) or POST requests to `/pay` or `/api` endpoints. Pair this with **Suricata alerts** for known ransomware C2 IPs (e.g., `alert http any any -> $HOME_NET any (msg:"Ransomware C2 Beacon"; content:"/pay"; sid:1000002;)`).
-   - Detect **T1573.001 (Encrypted Channel: Symmetric Cryptography)** by analyzing **Zeek’s `ssl.log`** for unusual cipher suites (e.g., `TLS_RSA_WITH_AES_128_CBC_SHA`) or self-signed certificates. Use **Elasticsearch** to filter on `ssl.cipher: "TLS_RSA_WITH_AES_128_CBC_SHA"` and correlate with `destination.ip` from `conn.log`.
-
-3. **Registry and File System Detection**:
-   - Hunt for **T1112 (Modify Registry)** by querying **Windows Event ID 4657** (Registry Value Modified) for changes to `HKLM\System\CurrentControlSet\Services\VSS\Start` (value `0x4` disables VSS). This detects **T1490** (Inhibit System Recovery).
-   - Monitor **Sysmon Event ID 11** (FileCreate) for ransom notes (e.g., `*_HOW_TO_DECRYPT.txt`) or encrypted files (e.g., `*.locked`). Correlate with **Windows Event ID 4663** (File System Object Access) to detect mass encryption.
-
-4. **Defense Evasion Detection**:
-   - Detect **T1070.001 (Clear Windows Event Logs)** by monitoring **Windows Event ID 1102** (Event Log Cleared). Correlate with **Sysmon Event ID 25** (ProcessTampering) to identify processes tampering with event logs.
-   - Hunt for **T1562.001 (Impair Defenses: Disable or Modify Tools)** by querying **Windows Event ID 4688** for processes launching `sc stop WinDefend` or `net stop wscsvc` (disabling Windows Defender or Security Center).
-
-**Threat-Hunting Pivots**
-- **Zeek Logs**:
-  - Pivot from `conn.log` to `dns.log` to identify DGA (Domain Generation Algorithm) patterns in `query` fields (e.g., `^[a-z0-9]{10}\.com$`). This maps to **T1568.002 (Dynamic Resolution: Domain Generation Algorithms)**.
-  - Use `http.log` to hunt for unusual `uri` paths (e.g., `/c2` or `/api/key`) or `user_agent` strings (e.g., `Mozilla/5.0 (Windows NT 10.0; Win64; x64) EvilRansomware/1.0`).
-
-- **Elasticsearch**:
-  - Create a dashboard to correlate `process.command_line` (from Sysmon Event ID 1) with `destination.ip` (from Zeek `conn.log`) to identify processes beaconing to known-bad IPs.
-  - Hunt for **T1059.001 (PowerShell)** by filtering on `process.name: "powershell.exe"` and `process.command_line: "*-enc*"` or `"*[Convert]::FromBase64String*"`.
-
-- **Registry**:
-  - Query `HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Run` for suspicious values (e.g., `*.exe` in `%TEMP%`). This detects **T1547.001 (Boot or Logon Autostart Execution: Registry Run Keys)**.
-  - Hunt for **T1564.001 (Hide Artifacts: Hidden Files and Directories)** by identifying files with the `hidden` attribute (`attrib +h`) in `%APPDATA%` or `%PROGRAMDATA%`.
-
-**Sources for Detection Logic**
-- [CISA Alert AA23-325A: #StopRansomware Guide (Detection Section)](https://www.cisa.gov/news-events/cybersecurity-advisories/aa23-325a)
-- [Elastic Security Labs: Detecting Ransomware with Sysmon](https://www.elastic.co/security-labs/detecting-ransomware-with-sysmon)
-- [Microsoft Sysmon Documentation](https://docs.microsoft.com/en-us/sysinternals/downloads/sysmon)
-- [Zeek Log Reference](https://docs.zeek.org/en/master/logs/index.html)
-- [Suricata Rule Writing Guide](https://suricata.readthedocs.io/en/suricata-6.0.0/rules/intro.html)
-- [MITRE ATT&CK: Process Injection (T1055)](https://attack.mitre.org/techniques/T1055/)
-- [MITRE ATT&CK: Inhibit System Recovery (T1490)](https://attack.mitre.org/techniques/T1490/)
-
-
-### Adversary Emulation & Red-Team Perspective
-
-As part of adversary emulation, the red team deploys the ransomware’s memory-resident components using **T1055.013 – Process Doppelgänging** to evade static detection. This technique leverages the Windows Transactional NTFS (TxF) to create a modified copy of a legitimate executable (e.g., `notepad.exe`), inject the ransomware payload, and roll back the transaction—leaving no trace on disk. Memory artifacts include a process with a mismatched PEB (Process Environment Block): the original image name appears legitimate, but the process’s memory sections contain the encrypted payload and hollowed-out regions. Additionally, **T1134.004 – Parent PID Spoofing** is used to spawn the ransomware process under a trusted parent like `explorer.exe` or `svchost.exe`, bypassing process ancestry heuristics. This spoofing leaves an artifact in the EPROCESS block’s `InheritedFromUniqueProcessId` field, which can be recovered via memory forensics. Evasion considerations include avoiding user-mode API hooks by using direct syscalls (e.g., Hell’s Gate / Halo’s Gate) and disabling ETW (Event Tracing for Windows) to prevent telemetry. The red team also clears the VAD (Virtual Address Descriptor) using “dead drop” injection to hinder memory scanning. These emulated techniques mirror real-world ransomware operations and leave distinct forensic footprints for blue team analysis.
-
-**Sources**:
-- CrowdStrike on Process Doppelgänging: https://www.crowdstrike.com/blog/process-doppelanging-a-new-way-to-impersonate-processes/
-- Mandiant on Parent PID Spoofing: https://www.mandiant.com/resources/blog/tracking-parent-pid-spoofing
-
-### Common Pitfalls & Result Validation
-
-Analysts often misinterpret ransomware memory artifacts due to **over-reliance on single indicators** or **ignoring process context**. A frequent mistake is assuming all suspicious strings (e.g., `.locked` extensions) confirm ransomware—these may stem from benign file operations or unrelated malware (e.g., **T1037.004: Boot or Logon Initialization Scripts**). Validate findings by cross-referencing process trees, loaded modules, and network connections (e.g., **T1071.004: DNS Application Layer Protocol**). For example, if `cmd.exe` spawns `vssadmin.exe` to delete shadow copies, check parent processes for signs of **T1491.001: Internal Defacement** (e.g., `wmic` or PowerShell invocations).
-
-False positives arise when analysts conflate **legitimate encryption tools** (e.g., BitLocker) with ransomware. To avoid this, verify:
-1. **Process injection** (e.g., **T1055.002: Portable Executable Injection**) via `malfind` or `dlllist` in Volatility.
-2. **Unusual child processes** (e.g., `notepad.exe` spawning `certutil.exe`).
-3. **Memory-resident payloads** by checking for hollowed processes or anomalous memory sections.
-
-Always correlate memory artifacts with disk/registry evidence (e.g., `UserAssist` keys for executed binaries). For authoritative validation, consult:
-- [CERT-EU’s ransomware memory forensics guide](https://cert.europa.eu/static/WhitePapers/CERT-EU-SWP_17_001_ransomware.pdf)
-- [FireEye’s memory analysis best practices](https://www.fireeye.com/content/dam/fireeye-www/services/pdfs/pf/ms/mandiant-memory-forensics.pdf)
 
 ## Sources
 Claim → source mapping (all URLs are official/authoritative):
@@ -320,20 +299,24 @@ Claim → source mapping (all URLs are official/authoritative):
 
 - **MITRE ATT&CK techniques cited**:
   - T1486 — https://attack.mitre.org/techniques/T1486/
-  - T1071 — https://attack.mitre.org/techniques/T1071/ ; T1071.001 — https://attack.mitre.org/techniques/T1071/001/
-  - T1055 — https://attack.mitre.org/techniques/T1055/ ; T1055.001 — https://attack.mitre.org/techniques/T1055/001/ ; T1055.012 — https://attack.mitre.org/techniques/T1055/012/
+  - T1071 — https://attack.mitre.org/techniques/T1071/ ; T1071.001 — https://attack.mitre.org/techniques/T1071/001/ ; T1071.004 — https://attack.mitre.org/techniques/T1071/004/
+  - T1055 — https://attack.mitre.org/techniques/T1055/ ; T1055.001 — https://attack.mitre.org/techniques/T1055/001/ ; T1055.012 — https://attack.mitre.org/techniques/T1055/012/ ; T1055.013 — https://attack.mitre.org/techniques/T1055/013/ ; T1055.002 — https://attack.mitre.org/techniques/T1055/002/
   - T1027 — https://attack.mitre.org/techniques/T1027/
   - T1036 — https://attack.mitre.org/techniques/T1036/
   - T1490 — https://attack.mitre.org/techniques/T1490/
   - T1112 — https://attack.mitre.org/techniques/T1112/
-  - T1070 — https://attack.mitre.org/techniques/T1070/ ; T1070.001 — https://attack.mitre.org/techniques/T1070/001/ ; T1070.004 — https://attack.mitre.org/techniques/T1070/004/
+  - T1070 — https://attack.mitre.org/techniques/T1070/ ; T1070.001 — https://attack.mitre.org/techniques/T1070/001/ ; T1070.004 — https://attack.mitre.org/techniques/T1070/004/ ; T1070.006 — https://attack.mitre.org/techniques/T1070/006/
   - T1059 — https://attack.mitre.org/techniques/T1059/ ; T1059.001 — https://attack.mitre.org/techniques/T1059/001/
   - T1573 — https://attack.mitre.org/techniques/T1573/ ; T1573.001 — https://attack.mitre.org/techniques/T1573/001/
   - T1041 — https://attack.mitre.org/techniques/T1041/
   - T1547.001 — https://attack.mitre.org/techniques/T1547/001/
-  - T1562.001 — https://attack.mitre.org/techniques/T1562/001/
+  - T1562.001 — https://attack.mitre.org/techniques/T1562/001/ ; T1562.003 — https://attack.mitre.org/techniques/T1562/003/
   - T1564.003 — https://attack.mitre.org/techniques/T1564/003/
   - T1568.002 — https://attack.mitre.org/techniques/T1568/002/
+  - T1134.004 — https://attack.mitre.org/techniques/T1134/004/
+  - T1037.004 — https://attack.mitre.org/techniques/T1037/004/
+  - T1491.001 — https://attack.mitre.org/techniques/T1491/001/
+  - T1570 — https://attack.mitre.org/techniques/T1570/
 
 - **RFC 5737** (documentation IP ranges incl. 203.0.113.0/24) — https://datatracker.ietf.org/doc/html/rfc5737
 
@@ -342,12 +325,15 @@ Claim → source mapping (all URLs are official/authoritative):
   - Event ID 4663 (File System Object Access) — https://docs.microsoft.com/en-us/windows/security/threat-protection/auditing/event-4663
   - Event ID 104 (Event Log Cleared) — https://docs.microsoft.com/en-us/windows/security/threat-protection/auditing/event-104
   - Event ID 4657 (Registry Value Modified) — https://docs.microsoft.com/en-us/windows/security/threat-protection/auditing/event-4657
+  - Event ID 1102 (Event Log Cleared) — https://docs.microsoft.com/en-us/windows/security/threat-protection/auditing/event-1102
+  - Event ID 4624 (Account Logon) — https://docs.microsoft.com/en-us/windows/security/threat-protection/auditing/event-4624
 
 - **Sysmon Events**:
   - Event ID 1 (Process Creation) — https://docs.microsoft.com/en-us/sysinternals/downloads/sysmon#event-id-1-process-creation
   - Event ID 8 (CreateRemoteThread) — https://docs.microsoft.com/en-us/sysinternals/downloads/sysmon#event-id-8-createremotethread
   - Event ID 10 (ProcessAccess) — https://docs.microsoft.com/en-us/sysinternals/downloads/sysmon#event-id-10-processaccess
   - Event ID 11 (FileCreate) — https://docs.microsoft.com/en-us/sysinternals/downloads/sysmon#event-id-11-filecreate
+  - Event ID 13 (RegistryEvent) — https://docs.microsoft.com/en-us/sysinternals/downloads/sysmon#event-id-13-registryevent
   - Event ID 25 (ProcessTampering) — https://docs.microsoft.com/en-us/sysinternals/downloads/sysmon#event-id-25-processtampering
 
 - **SANS FOR508** (IR/threat-hunting & memory forensics methodology) — https://www.sans.org/cyber-security-courses/advanced-incident-response-threat-hunting/
@@ -356,16 +342,18 @@ Claim → source mapping (all URLs are official/authoritative):
   - CISA #StopRansomware Guide — https://www.cisa.gov/news-events/cybersecurity-advisories/aa23-325a
   - Elastic Security Labs: Detecting Ransomware with Sysmon — https://www.elastic.co/security-labs/detecting-ransomware-with-sysmon
 
+- **Adversary Emulation & Evasion**:
+  - CrowdStrike on Process Doppelgänging — https://www.crowdstrike.com/blog/process-doppelanging-a-new-way-to-impersonate-processes/
+  - Mandiant on Parent PID Spoofing — https://www.mandiant.com/resources/blog/tracking-parent-pid-spoofing
+
+- **Validation & Best Practices**:
+  - CERT-EU’s ransomware memory forensics guide — https://cert.europa.eu/static/WhitePapers/CERT-EU-SWP_17_001_ransomware.pdf
+  - FireEye’s memory analysis best practices — https://www.fireeye.com/content/dam/fireeye-www/services/pdfs/pf/ms/mandiant-memory-forensics.pdf
+
 ## Related modules
 - [Memory forensics](../02-memory-forensics/README.md) -- shares bulk_extractor for carving IOCs from RAM captures.
 - [Volatility 3 deep-dive (memory plugins & workflow)](../20-volatility-deep/README.md) -- shares bulk_extractor and extends the Volatility 3 plugin workflow used here, including advanced process injection analysis.
 - [Scenario: C2 network traffic hunt](../50-c2-network-hunt/README.md) -- shares yara for signature-based hunting of C2 indicators and extends network-based detection logic.
 - [Scenario: end-to-end host triage](../51-linux-triage-workflow/README.md) -- shares bulk_extractor within a full host-triage pipeline, including registry and file system artifact analysis.
 
-<!-- cyberlab-enriched: v3 -->
-- https://www.crowdstrike.com/blog/process-doppelanging-a-new-way-to-impersonate-processes/
-- https://www.mandiant.com/resources/blog/tracking-parent-pid-spoofing
-- https://cert.europa.eu/static/WhitePapers/CERT-EU-SWP_17_001_ransomware.pdf
-- https://www.fireeye.com/content/dam/fireeye-www/services/pdfs/pf/ms/mandiant-memory-forensics.pdf
-
-<!-- cyberlab-enriched: v4 -->
+<!-- cyberlab-enriched: v5 -->
