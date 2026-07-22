@@ -296,6 +296,57 @@ Sources:
 - [DFIR Review: Volatility Pitfalls](https://www.dfir.review/2021/03/15/common-pitfalls-in-memory-forensics/)
 - [CERT-EU: Memory Forensics Best Practices](https://cert.europa.eu/static/WhitePapers/CERT-EU-SWP_17_001_Memory_Forensics.pdf)
 
+
+### Essential Commands & Features
+To further enhance tradecraft, several essential commands and features in Volatility 3 are crucial for deeper analysis. The `yarascan` plugin can be used to scan memory for YARA rules, which is useful for detecting malware, as seen in [T1588.004, "Obfuscated Files or Information"](https://attack.mitre.org/techniques/T1588/004/). For example, `volatility3 -f memdump.raw yarascan --yara-rules /path/to/rules.yar` can be used to scan a memory dump for specific malware signatures. The `dlllist` plugin can be used to list loaded DLLs in a process, which is useful for detecting [T1218, "Signed Binary Proxy Execution"](https://attack.mitre.org/techniques/T1218/). For instance, `volatility3 -f memdump.raw dlllist --pid 1234` can be used to list loaded DLLs for a specific process. Additionally, the `timeliner` plugin can be used to create a timeline of system events, which is useful for analyzing system activity. The `windows.registry` plugin can be used to analyze the Windows registry, which is useful for detecting [T1112, "Modify Registry"](https://attack.mitre.org/techniques/T1112/). For more information on these plugins and their usage, refer to the [Volatility 3 documentation](https://www.volatilityfoundation.org/legacy/docs/volatility3/) and the [Digital Forensics and Incident Response (DFIR) training resources](https://www.dfir.training/).
+
+### Detection Signatures & Reference Artifacts
+
+The following detection signatures are provided for the benign lab sample `fauxdump.exe`, which simulates credential dumping and process injection activities for training purposes. All artifacts and indicators are derived from a controlled environment.
+
+```yara
+rule Benign_Mem_Dump_Simulation {
+    meta:
+        description = "Detects a benign memory dump simulation executable used in defensive training"
+        author = "Security Training Team"
+        date = "2025-04-10"
+    strings:
+        $s1 = "FauxDump" ascii
+        $s2 = "DumpCredentials" ascii
+        $s3 = "MiniDumpWriteDump" ascii
+    condition:
+        filesize < 5MB and any of ($s1, $s2, $s3)
+}
+```
+
+```yaml
+title: Benign Memory Dump Simulation Process Creation
+logsource:
+    category: process_creation
+    product: windows
+detection:
+    selection:
+        CommandLine|contains: 'fauxdump.exe'
+    condition: selection
+```
+
+**Reference artifacts / IOCs**
+
+| Indicator Type | Value |
+|----------------|-------|
+| SHA256 hash | `1a2b3c4d5e6f7890abcdef1234567890abcdef1234567890abcdef1234567890` |
+| Filename | `fauxdump.exe` |
+| Host artifact | Process creation `fauxdump.exe` with command line arguments simulating credential dump (e.g., `--dump-credentials`) |
+| Network artifact | Outbound connection to `hxxp://192.0.2[.]2:8080/upload` (defanged) |
+
+**MITRE ATT&CK Techniques Covered:**
+- [T1003.001 OS Credential Dumping: LSASS Memory](https://attack.mitre.org/techniques/T1003/001/)
+- [T1055.001 Process Injection: DLL Injection](https://attack.mitre.org/techniques/T1055/001/)
+
+**Authoritative Source URLs:**
+- MITRE ATT&CK T1003.001 technique page: `https://attack.mitre.org/techniques/T1003/001/`
+- YARA rule writing documentation: `https://yara.readthedocs.io/en/stable/writingrules.html`
+
 ## Sources
 Claim → source mapping (all URLs are official tool docs/repos, MITRE ATT&CK, SANS, Microsoft Learn, or recognized project docs):
 
@@ -343,3 +394,12 @@ Claim → source mapping (all URLs are official tool docs/repos, MITRE ATT&CK, S
 - https://cert.europa.eu/static/WhitePapers/CERT-EU-SWP_17_001_Memory_Forensics.pdf
 
 <!-- cyberlab-enriched: v5 -->
+- https://attack.mitre.org/techniques/T1588/004/
+- https://attack.mitre.org/techniques/T1218/
+- https://www.volatilityfoundation.org/legacy/docs/volatility3/
+- https://www.dfir.training/
+- https://attack.mitre.org/techniques/T1055/001/
+- https://attack.mitre.org/techniques/T1003/001/`
+- https://yara.readthedocs.io/en/stable/writingrules.html`
+
+<!-- cyberlab-enriched: v6 -->
