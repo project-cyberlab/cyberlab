@@ -242,45 +242,6 @@ Once **46-cutter-windows** has carved a malicious payload from memory, shift foc
 - [FireEye: Detecting Disabling of Security Tools (T1562.001)](https://www.fireeye.com/blog/threat-research/2020/03/suspicious-processes-indicative-of-security-tool-disabling.html)
 
 
-### Essential Commands & Features
-
-Cutter’s advanced capabilities extend beyond basic disassembly and analysis. Below are **high-impact commands and features** to accelerate reverse engineering, particularly for malware analysis and threat hunting:
-
-1. **Function Cross-References (`xrefs`)**
-   Identify where a function is called or referenced to trace execution flow—critical for analyzing **T1112 (Modify Registry)** or **T1548.002 (Bypass User Account Control)**.
-   ```bash
-   # In Cutter's console (View → Console):
-   [0x00401234]> axt @ sym.imp.RegOpenKeyExW
-   ```
-   *Use when:* Mapping persistence mechanisms or registry modifications.
-
-2. **Memory Dump (`dm` + `px`)**
-   Extract runtime artifacts (e.g., injected code) from memory regions, useful for detecting **T1055.003 (Process Injection: Thread Local Storage)**.
-   ```bash
-   [0x00401234]> dm~heap  # List heap regions
-   [0x00401234]> px 256 @ 0x1a00000  # Hexdump 256 bytes at address
-   ```
-   *Use when:* Analyzing in-memory payloads or unpacked malware.
-
-3. **Emulation (`ae`)**
-   Execute code snippets without a debugger to test logic (e.g., decryption routines).
-   ```bash
-   [0x00401234]> ae 10 @ sym.decrypt_func  # Emulate 10 instructions
-   ```
-   *Use when:* Validating obfuscated algorithms (e.g., **T1140 (Deobfuscate/Decode Files or Information)**).
-
-4. **Rizin CLI Integration (`aaa`, `iz`, `pd`)**
-   Leverage Rizin’s CLI for bulk analysis:
-   ```bash
-   # Analyze all functions, list strings, disassemble 10 instructions:
-   [0x00401234]> aaa; iz; pd 10 @ main
-   ```
-   *Use when:* Automating repetitive tasks (e.g., string extraction for **T1202 (Indirect Command Execution)**).
-
-**Sources:**
-- [Cutter’s Rizin CLI Cheatsheet](https://github.com/rizinorg/cutter/blob/master/docs/rizin-cheatsheet.md)
-- [MITRE ATT&CK: T1112](https://attack.mitre.org/techniques/T1112/) | [T1055.003](https://attack.mitre.org/techniques/T1055/003/)
-
 ### Adversary Emulation & Red-Team Perspective
 
 From an adversary’s perspective, **46-cutter-windows** (a Rizin-based binary rewriter) is a stealthy tool for in-memory payload manipulation, enabling evasion of static and behavioral detection. Attackers leverage it to **modify compiled binaries at runtime**, stripping or altering signatures, obfuscating strings, or injecting malicious code without touching disk—critical for bypassing EDR/AV heuristics.
@@ -299,28 +260,6 @@ From an adversary’s perspective, **46-cutter-windows** (a Rizin-based binary r
 - [MITRE ATT&CK: T1620](https://attack.mitre.org/techniques/T1620/)
 - [SpecterOps: In-Memory Evasion Techniques](https://posts.specterops.io/) (e.g., "Bring Your Own Land" research)
 
-
-### Essential Commands & Features
-
-This subsection covers powerful Cutter features not yet demonstrated: function renaming, comments, bookmarks, patching, and integration with the Rizin console. Each lets you alter a binary's interpretation, facilitating analysis and anti‑analysis bypasses such as **T1055.004** (Thread Execution Hijacking) and **T1562.002** (Disable Windows Event Logging).
-
-**Function Renaming** – Right‑click a function in the Disassembly view or use the Rizin console (`:`) with `afn`.  
-Example: `:> afn malicious_func 0x401000` renames the function at `0x401000` to `malicious_func`.
-
-**Comments** – Press `;` in the Disassembly view or use `CC`.  
-Example: `:> CC "suspicious call"` adds the comment at the current cursor address. Comments help document key code paths – essential when tracking defense evasion modifications.
-
-**Bookmarks** – Press `Alt+B` or use `:> :b` to set a bookmark at the current address. Jump to saved bookmarks via `:> :b -l`. Bookmarks quickly revisit critical patches (e.g., NOP pads for **T1055.004**).
-
-**Patching** – Use the Rizin console to write bytes directly.  
-Example: `:> s 0x401020` to seek, then `:> wx 90909090` to write four NOPs. Alternatively, apply patches via the GUI’s "Edit" menu. Patching is vital for bypassing thread hijacking checks or disabling logging (e.g., corrupting an event log API call to achieve **T1562.002**).
-
-**Rizin Console Integration** – Press `:` to open the integrated console without leaving Cutter. Run `aaa` for full auto‑analysis, `afl` to list all discovered functions, and `s` (seek) to navigate to any address. Combined, these commands accelerate reverse engineering of evasive binaries.
-
-**Authoritative References**  
-- Rizin Book – Console commands: [https://book.rizin.re](https://book.rizin.re)  
-- MITRE ATT&CK – T1055.004: [https://attack.mitre.org/techniques/T1055/004](https://attack.mitre.org/techniques/T1055/004)  
-- MITRE ATT&CK – T1562.002: [https://attack.mitre.org/techniques/T1562/002](https://attack.mitre.org/techniques/T1562/002)
 
 ### Detection Signatures & Reference Artifacts
 

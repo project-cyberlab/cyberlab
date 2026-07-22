@@ -196,30 +196,6 @@ Red teams abuse WinDbg as a Microsoft-signed binary to proxy execution of arbitr
 - Microsoft. “Getting Started with WinDbg (User-Mode).” https://learn.microsoft.com/en-us/windows-hardware/drivers/debugger/getting-started-with-windbg
 
 
-### Essential Commands & Features
-
-- **`!exchain`** – Displays the structured exception handling (SEH) chain. Useful when analyzing exploits that overwrite SEH handlers (e.g., T1574.002: Hijack Execution Flow – DLL Side-Loading) or when debugging crashes caused by corrupted exception records.  
-  Example: `0:000> !exchain`  
-  Output shows each handler node’s address and the next pointer. Use after a `!analyze -v` to trace SEH abuse.
-
-- **`.writemem`** – Writes a memory region to a binary file. Essential for dumping shellcode, unpacked payloads, or hidden executable sections. Supports on‑disk analysis with tools like `pebear` or `scdbg`.  
-  Example: `.writemem C:\dumps\mimikatz.bin 0x7FF700000000 L0x1000`  
-  Use when you encounter suspicious RWX memory and want to preserve it for offline static/dynamic analysis (T1036.005: Masquerading – Match Legitimate Name or Location may involve in‑memory code).
-
-- **`.process / .thread`** – Switch context to another process or thread without breaking the kernel debug session. Crucial when hunting cross‑process injection or when a rootkit attacks a system process.  
-  Example: `.process /i /p FFFFFA800B42D040` (then `g` to attach), `.thread FFFFFA800B42E320`  
-  Use after `!process 0 0 lsass.exe` to inspect a specific process’s token, handles, or memory (T1518.001: Security Software Discovery).
-
-- **`dx`** – The modern expression evaluator for data model queries. Replaces old `dt` for complex structure navigation. Allows filtering, projections, and LINQ‑style queries on objects.  
-  Example: `dx -r2 @$curprocess.KernelObject.EnvironmentBlock.ProcessParameters`  
-  Use to quickly traverse `_EPROCESS` fields, enumerate active threads, or inspect heap structures (T1047: Windows Management Instrumentation – can be used to query process info, but `dx` provides raw memory access for verification).
-
-Cited MITRE ATT&CK techniques: T1574.002 (Hijack Execution Flow – DLL Side-Loading), T1036.005 (Masquerading – Match Legitimate Name or Location).
-
-Sources:  
-- SANS WinDbg Cheat Sheet (https://www.sans.org/posters/windbg-cheat-sheet/)  
-- Microsoft Learn: WinDbg Commands (https://docs.microsoft.com/en-us/windows-hardware/drivers/debugger/debugger-commands)
-
 ### Threat Hunting & Detection Engineering
 
 In **WinDbg**, threat hunters can uncover adversary tradecraft by analyzing memory artifacts tied to **Process Injection (T1055.012: Process Hollowing)** and **Boot or Logon Autostart Execution (T1547.001: Registry Run Keys / Startup Folder)**. For **T1055.012**, inspect suspicious parent-child process relationships (e.g., `svchost.exe` spawning `cmd.exe`) via `!dml_proc` and cross-reference with **Windows Event ID 4688** (Process Creation) in the Security log, filtering for `ParentProcessName` and `NewProcessName`. Memory regions with `PAGE_EXECUTE_READWRITE` permissions (visible via `!address`) may indicate injected code—pivot to **Sysmon Event ID 10** (ProcessAccess) for `GrantedAccess` values like `0x1010` (PROCESS_VM_OPERATION | PROCESS_VM_WRITE).
@@ -230,14 +206,6 @@ For **T1547.001**, hunt for persistence by dumping the **Registry hive** (`!reg`
 - [CISA: Detecting Post-Compromise Threat Activity in Microsoft Cloud Environments (T1055.012)](https://www.cisa.gov/resources-tools/services/detecting-post-compromise-threat-activity-microsoft-cloud-environments)
 - [FireEye: Detecting Process Hollowing with Volatility and YARA (T1547.001)](https://www.fireeye.com/blog/threat-research/2017/05/fin7-shim-databases-persistence.html)
 
-
-### Essential Commands & Features
-
-**WinDbg:** `!exchain` displays the structured exception handler chain—critical for analyzing SEH overwrite exploits used in spearphishing attachments (T1566.001). Example: `!exchain` after loading a crash dump. `.writemem C:\dump.bin 0x400000 0x1000` saves a memory region to disk, enabling offline analysis of malicious payloads (T1204.002 Malicious File). `.process /i /p <PID>` switches context to a specific user-mode process for per-process analysis, while `.thread` displays thread details—essential for rootkit thread injection detection. `dx -r1 @$cursession.Processes.Where(p->p.Name.Contains("cmd"))` queries the debugger object model for live enumeration. `.shell -ci "!process 0 0" cmd /c findstr /i "explorer"` runs external commands within the debug session, useful for automating artifact collection.
-
-**x64dbg:** Conditional breakpoints via `bp 0x401000, "eax==1"` pause execution only when a condition is met, reducing noise when analyzing unpacking loops. Trace logs (`Trace & Break -> Trace Into` and then `Log File...`) record every instruction executed—ideal for reconstructing encrypted malware flow. Patching is built-in: right-click on a disassembly line, select `Patch > Fill with NOP` to disable API checks, then save changes to the executable for dynamic bypass of anti-debug checks (T1622 Debugger Evasion).
-
-Sources: OSR WinDbg tips (https://www.osr.com/blog/) and x64dbg official blog (https://www.x64dbg.com/blog/).
 
 ### Detection Signatures & Reference Artifacts
 
@@ -293,18 +261,6 @@ rule ScanBox_Malware_Generic {
 | sample sha256 | `97df202bc324a4f636f33cd385001e37d08d62c170169a7bf00e655387484c96` |
 | reproduce sample | a text file containing exactly: 'cyberlab benign training sample -- module 44-windbg-deep -- for detection-rule testing only
 ' |
-### Essential Commands & Features
-
-Master these power commands to accelerate analysis of stealthy malware behaviors. In WinDbg, `!exchain` dumps the structured exception handling (SEH) chain, revealing attempts to overwrite exception handlers—common in T1059.003 (Windows Command Shell) abuse. *Example:* `!exchain` displays the current thread's SEH list. Use `.childdbg` to enable child process debugging with `.childdbg 1`; critical for tracing T1204.001 (User Execution: Malicious Link) that spawns payloads (e.g., macro downloads). `.writemem` extracts memory regions: `.writemem c:\dump.bin 0x400000 0x401000` dumps a page. `dx` (Data Model eXaminer) queries structured data: `dx @$curprocess.KernelObject.Process` shows process details. `.shell` runs external tools: `.shell -ci "!process 0 0" findstr /i malware` pipes debugger output to a host command.
-
-In x64dbg, conditional breakpoints stop only when an expression is true (e.g., `eax==0x1234`), saving time on repeated events. Set one via right-click → “Breakpoint” → “Conditional”. Trace logging records instructions without halting: from the “Trace” menu, start with a max instruction limit and later inspect the log for T1055 (Process Injection) or T1622 (Debugger Evasion) patterns. These features directly support detection of parent-child injection chains and anti-debug techniques.
-
-**MITRE ATT&CK:** T1059.003 (Windows Command Shell), T1204.001 (User Execution: Malicious Link)
-
-**Sources:**  
-- WinDbg commands: OSR Online – [Debugging with Symbols](https://www.osr.com/resources/books/windbg-and-debugging/)  
-- x64dbg conditional breakpoints: x64dbg GitHub Wiki – [Breakpoints](https://github.com/x64dbg/x64dbg/wiki/Breakpoints)
-
 ### Common Pitfalls & Result Validation
 
 When analyzing malware with WinDbg, analysts often misinterpret breakpoints or memory dumps, leading to false conclusions. A frequent mistake is **assuming execution flow** without validating call stacks—attackers may manipulate return addresses (e.g., **T1601.002: Modify System Image**) to mislead debugging. Always cross-check disassembly with `k` (stack trace) and `uf` (function disassembly) to confirm control flow integrity.

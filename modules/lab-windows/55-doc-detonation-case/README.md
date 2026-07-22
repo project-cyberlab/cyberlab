@@ -186,17 +186,6 @@ FakeNet-NG’s **per-process redirection (`-x`)**, **custom listeners (`-c`)**, 
 - [NCC Group FakeNet-NG Documentation](https://github.com/fireeye/flare-fakenet-ng/blob/master/README.md#advanced-features)
 - [MITRE ATT&CK: Command and Control Techniques](https://www.mandiant.com/resources/blog/mitre-attck-tactics-techniques-part-1-command-and-control)
 
-### Adversary Emulation & Red-Team Perspective
-Adversaries weaponise compromised documents for initial access by embedding malicious macros or exploiting unpatched vulnerabilities in Office applications. A common TTP is **T1203 (Exploitation for Client Execution)**, for example CVE-2021-40444 in MSHTML, which triggers code execution without user macro consent. After delivery via **T1566.002 (Spearphishing Link)** – a link in an email body rather than an attachment – the document is retrieved from a controlled server, often staging a secondary payload such as Cobalt Strike. The detonation process leaves distinct artifacts: Office telemetry (e.g., `Microsoft Office Alerts` WinEvent 300), spawned child processes like `wscript.exe` or `mshta.exe` (T1218.010, though not required here), and outbound HTTP/HTTPS to ephemeral domains with User-Agent strings mimicking legitimate browser versions. For evasion, red teams use VBA stomping – stripping source code while leaving p-code intact – to bypass signature-based macro scanners, and sandbox detection via environment tweaks (e.g., checking screen resolution or system uptime). They also encrypt payloads with polymorphic stagers to avoid network IOCs like Suricata alerts for common protocol headers. Emulating this requires capturing full process lineage and network flows, then tuning detection rules for anomalous Office applications spawning scripting engines or making direct outbound calls outside typical Office 365 traffic.
-
-* Microsoft Security Blog: “How to hunt for macros in Office documents” – https://www.microsoft.com/security/blog/2022/01/31/how-to-hunt-for-macros-in-office-documents/
-* Cybereason: “Emulating Document-Based Attacks” – https://www.cybereason.com/blog/emulating-document-based-attacks
-
-
-### Essential Commands & Features
-
-To deepen analysis of **55-doc-detonation-case**, leverage these undemonstrated but critical commands and features:
-
 #### **FakeNet-NG Advanced Filtering & DNS Redirection**
 - **`--redirect-filters`**: Redirect specific traffic (e.g., non-standard ports) to FakeNet-NG’s listeners. Use when malware evades detection by using uncommon ports (e.g., **T1571 Non-Standard Port**).
   ```bash
@@ -214,6 +203,13 @@ To deepen analysis of **55-doc-detonation-case**, leverage these undemonstrated 
 **Sources**:
 - FakeNet-NG: [https://www.fireeye.com/blog/threat-research/2016/06/fakenet-ng.html](https://www.fireeye.com/blog/threat-research/2016/06/fakenet-ng.html)
 - Wireshark: [https://www.hackers-arise.com/post/wireshark-for-malware-analysis](https://www.hackers-arise.com/post/wireshark-for-malware-analysis)
+
+### Adversary Emulation & Red-Team Perspective
+Adversaries weaponise compromised documents for initial access by embedding malicious macros or exploiting unpatched vulnerabilities in Office applications. A common TTP is **T1203 (Exploitation for Client Execution)**, for example CVE-2021-40444 in MSHTML, which triggers code execution without user macro consent. After delivery via **T1566.002 (Spearphishing Link)** – a link in an email body rather than an attachment – the document is retrieved from a controlled server, often staging a secondary payload such as Cobalt Strike. The detonation process leaves distinct artifacts: Office telemetry (e.g., `Microsoft Office Alerts` WinEvent 300), spawned child processes like `wscript.exe` or `mshta.exe` (T1218.010, though not required here), and outbound HTTP/HTTPS to ephemeral domains with User-Agent strings mimicking legitimate browser versions. For evasion, red teams use VBA stomping – stripping source code while leaving p-code intact – to bypass signature-based macro scanners, and sandbox detection via environment tweaks (e.g., checking screen resolution or system uptime). They also encrypt payloads with polymorphic stagers to avoid network IOCs like Suricata alerts for common protocol headers. Emulating this requires capturing full process lineage and network flows, then tuning detection rules for anomalous Office applications spawning scripting engines or making direct outbound calls outside typical Office 365 traffic.
+
+* Microsoft Security Blog: “How to hunt for macros in Office documents” – https://www.microsoft.com/security/blog/2022/01/31/how-to-hunt-for-macros-in-office-documents/
+* Cybereason: “Emulating Document-Based Attacks” – https://www.cybereason.com/blog/emulating-document-based-attacks
+
 
 ### Detection Signatures & Reference Artifacts
 
@@ -304,9 +300,6 @@ rule MAL_Fake_Document_Software_Indicators_Nov23 {
 | sample sha256 | `8c524e940acd8d92e1d596e97b92206d73ece921ae8801d8d451899d4e8ce886` |
 | reproduce sample | a text file containing exactly: 'cyberlab benign training sample -- module 55-doc-detonation-case -- for detection-rule testing only
 ' |
-### Essential Commands & Features
-To further enhance the 55-doc-detonation-case analysis, it's crucial to understand additional commands and features of FakeNet-NG and Wireshark. For FakeNet-NG, the `--config` flag allows for customization of the simulation environment, such as specifying the IP address range for the fake network. For example, `FakeNet-NG.exe --config fake_net_config.txt` loads a custom configuration from a file. The `--dns`, `--http`, and `--ssl` flags enable DNS, HTTP, and SSL/TLS protocol simulation, respectively. These features are particularly useful when analyzing malware that utilizes these protocols, as seen in techniques like [T1588.001, "Obfuscated Files or Information"](https://attack.mitre.org/techniques/T1588/001/) and [T1595, "Active Scanning"](https://attack.mitre.org/techniques/T1595/). In Wireshark, the 'Follow TCP Stream' feature allows for in-depth analysis of a specific TCP conversation, while the IO Graph feature provides a visual representation of network traffic patterns. These tools are essential for identifying and understanding complex network interactions. For more information on utilizing these features, refer to the official [FakeNet-NG GitHub repository](https://github.com/mandiant/FakeNet-NG) and the [Wireshark User's Guide](https://www.wireshark.org/docs/wsug_html_chunked/).
-
 ### Common Pitfalls & Result Validation
 
 Analysts often misinterpret document detonation results due to **over-reliance on sandbox defaults** or **ignoring evasion techniques**. A frequent mistake is failing to account for **delayed execution** (e.g., malicious macros triggering only after user interaction), which may not manifest in short-lived sandbox sessions. Another pitfall is **false negatives from environment-aware malware** (e.g., checking for virtualization artifacts before executing payloads). To validate findings, cross-reference detonation logs with network traffic (e.g., Wireshark/Zeek) and endpoint telemetry (e.g., Sysmon) to confirm artifacts like **unexpected process spawning** or **C2 beaconing**.

@@ -186,39 +186,6 @@ Avoid false conclusions by never relying solely on one debugging session; cross�
 - MITRE ATT&CK: User Execution – [https://attack.mitre.org/techniques/T1204/002/](https://attack.mitre.org/techniques/T1204/002/)
 
 
-### Essential Commands & Features
-
-Mastering **x64dbg**’s advanced features accelerates reverse engineering and malware analysis. Below are **critical but undemonstrated** commands and features, with concrete examples and tactical use cases:
-
-1. **Memory Breakpoints (`bp m`)**
-   Trigger on *read/write/execute* access to a memory region (e.g., unpacked code or API hooks).
-   **Example**: `bp m write, 0x401000, 0x1000` (break on write to `0x401000-0x402000`).
-   **Use Case**: Detect **T1055.004 (Process Injection: Asynchronous Procedure Call)** when malware writes to remote process memory.
-   *Right-click target address → Breakpoint → Memory Breakpoint → Select access type.*
-
-2. **Conditional Breakpoints (`bp addr, "condition"`)**
-   Pause execution only when a condition is met (e.g., register value, memory content).
-   **Example**: `bp 0x401234, "eax == 0x55AA"` (break at `0x401234` if `EAX` equals `0x55AA`).
-   **Use Case**: Bypass **T1562.006 (Indicator Blocking: Code Signing Policy Modification)** by catching specific anti-debug checks.
-
-3. **Scripting API (`log`, `findmem`, `alloc`)**
-   Automate repetitive tasks (e.g., dumping memory, scanning for patterns).
-   **Example**:
-   ```python
-   findmem("68 ?? ?? ?? ?? E8", 0x400000, 0x410000)  # Find CALL instructions in .text
-   log("Found pattern at: {0}", $result)
-   ```
-   **Use Case**: Hunt for **T1574.001 (Hijack Execution Flow: DLL Search Order Hijacking)** by scripting pattern searches.
-
-4. **Hardware Breakpoints (`bph`)**
-   Use CPU debug registers (DR0-DR3) to break on *execute/read/write* to a specific address (limited to 4 breakpoints).
-   **Example**: `bph 0x401000, x` (break on execute at `0x401000`).
-   **Use Case**: Track **T1055.003 (Process Injection: Thread Execution Hijacking)** by monitoring thread start addresses.
-
-**Authoritative Sources**:
-- [x64dbg Scripting Documentation (GitBook)](https://x64dbg.com/script/)
-- [SANS FOR610: Reverse-
-
 ### Threat Hunting & Detection Engineering
 
 Dynamic debugging tools (e.g., x64dbg, WinDbg) are frequently abused by adversaries to analyze and bypass security controls. Threat hunters can detect such activity by monitoring for **Process Injection (T1055.001)** and **Debugger Evasion (T1620)** techniques.
@@ -234,43 +201,6 @@ Dynamic debugging tools (e.g., x64dbg, WinDbg) are frequently abused by adversar
 - [MITRE ATT&CK: Debugger Evasion (T1620)](https://attack.mitre.org/techniques/T1620/)
 - [CISA Alert: Detecting Process Injection Techniques](https://www.cisa.gov/uscert/ncas/alerts/aa22-152a)
 
-
-### Essential Commands & Features
-
-While basic breakpoints are foundational, mastering **x64dbg’s advanced debugging features** unlocks deeper analysis of evasive malware. Below are the most critical commands and features not yet covered, with concrete examples and tactical use cases:
-
-1. **Hardware Breakpoints** (for stealthy execution monitoring)
-   - *When to use*: Detect memory access/modification (e.g., unpacking loops or anti-debugging checks) without altering code pages (unlike software breakpoints).
-   - *Example*: Set a hardware breakpoint on `Read` access at `0x00401000`:
-     ```
-     hwbreak 0x00401000, r
-     ```
-   - *MITRE ATT&CK*: [T1070.004: Indicator Removal: File Deletion](https://attack.mitre.org/techniques/T1070/004/) (e.g., wiping forensic artifacts).
-
-2. **Conditional Breakpoints** (for targeted analysis)
-   - *When to use*: Pause execution only when specific conditions are met (e.g., a register holds a decryption key or a loop counter reaches a threshold).
-   - *Example*: Break at `0x00401020` if `EAX == 0xDEADBEEF`:
-     ```
-     SetBreakpointCondition 0x00401020, "EAX == 0xDEADBEEF"
-     ```
-   - *MITRE ATT&CK*: [T1105: Ingress Tool Transfer](https://attack.mitre.org/techniques/T1105/) (e.g., filtering network callbacks).
-
-3. **Scripting (expr, log, cmd)** (for automation)
-   - *When to use*: Automate repetitive tasks (e.g., logging register states during unpacking or dumping memory regions).
-   - *Example*: Log `EAX` and `EBX` at every breakpoint, then continue execution:
-     ```
-     log "EAX: {eax}, EBX: {ebx}"
-     cmd "run"
-     ```
-   - *Use case*: Track register changes during [T1027.002: Obfuscated Files or Information: Software Packing](https://attack.mitre.org/techniques/T1027/002/).
-
-4. **Memory Map/Section Analysis** (for unpacking and hook detection)
-   - *When to use*: Identify injected code, unpacked regions, or suspicious memory permissions (e.g., `RWX` sections).
-   - *Example*: List all executable sections:
-     ```
-     memmap
-     ```
-   - *Key flags*: Filter for `RWX` or
 
 ### Adversary Emulation & Red-Team Perspective
 

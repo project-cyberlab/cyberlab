@@ -222,34 +222,6 @@ For evasion, attackers may throttle requests, use legitimate-looking domains (e.
 - [Red Canary: Web Shell Detection](https://redcanary.com/threat-detection-report/techniques/web-shell/)
 
 
-### Essential Commands & Features
-
-Master these **Nmap** commands to uncover deeper attack surface and automate discovery—critical for web-app testing where unauthenticated reconnaissance often precedes exploitation.
-
-```bash
-nmap -sC -p 80,443 192.168.1.100
-```
-**When to use**: Run **default scripts** (`-sC`) against web ports to detect misconfigurations (e.g., HTTP headers, SSL/TLS weaknesses) or exposed admin interfaces. Maps to **MITRE ATT&CK T1595.002 (Active Scanning: Vulnerability Scanning)**.
-
-```bash
-nmap -O -T4 192.168.1.100
-```
-**When to use**: **OS detection** (`-O`) with **aggressive timing** (`-T4`) to fingerprint the web server’s underlying OS, enabling targeted exploits (e.g., kernel-specific payloads). Ties to **T1083 (File and Directory Discovery)** for identifying OS-specific paths.
-
-```bash
-nmap --script=http-enum,http-vuln* -p- -A 192.168.1.100
-```
-**When to use**: Combine **all ports** (`-p-`), **aggressive mode** (`-A`), and **custom scripts** (`--script`) to brute-force web directories (`http-enum`) and test for CVEs (e.g., `http-vuln-cve2021-41773`). Critical for **T1190 (Exploit Public-Facing Application)**.
-
-```bash
-nmap -sV --script=broadcast-dhcp-discover 192.168.1.0/24
-```
-**When to use**: Discover rogue DHCP servers or misconfigured network devices that could redirect web traffic (e.g., via **T1557.002 (Adversary-in-the-Middle: ARP Cache Poisoning)**).
-
-**Sources**:
-- [Nmap Scripting Engine (NSE) Guide](https://nmap.org/book/nse.html)
-- [MITRE ATT&CK: Active Scanning Techniques](https://www.fireeye.com/current-threats/mitre-attack/techniques.html) (FireEye)
-
 ### Detection Signatures & Reference Artifacts
 
 Real, community-maintained detection rules for this topic (defensive use only). The reference artifacts at the end are BENIGN, illustrative lab values -- not live indicators.
@@ -332,34 +304,6 @@ rule WEBSHELL_ASPX_XslTransform_Aug21 {
 | sample sha256 | `8c8720738769a362a168666239755a49245853c643b2815e695b498d222e48a7` |
 | reproduce sample | a text file containing exactly: 'cyberlab benign training sample -- module 41-web-app-testing -- for detection-rule testing only
 ' |
-### Essential Commands & Features
-
-Beyond basic port scanning, Nmap’s most powerful features for web application testing remain undemonstrated. The following flags and NSE scripts are indispensable.
-
-- **`-sC` (Default Scripts)**: Executes a curated set of safe, common NSE scripts against each open port.  
-  *Example*: `nmap -sC -p 80,443 target.com`  
-  *When to use*: Initial discovery to quickly surface HTTP title, directory listings, XSS probes, and script-based service fingerprints without manual script selection. Maps to MITRE **T1049** (System Network Connections Discovery) by enumerating web service details.
-
-- **`-O` (OS Detection)**: Uses TCP/IP stack fingerprinting to guess the operating system of the target.  
-  *Example*: `nmap -O -p 80 target.com`  
-  *When to use*: After identifying a web server, determine if it runs Windows, Linux, or a specific embedded system to choose OS‑specific exploits. Correlates with MITRE **T1016** (System Network Configuration Discovery) – attackers profile the OS to refine subsequent attacks.
-
-- **`-A` (Aggressive Scan)**: Combines OS detection, version detection, script scanning (`-sC`), and traceroute into one command.  
-  *Example*: `nmap -A -p 80,443 target.com`  
-  *When to use*: When time permits and a comprehensive overview of a web server’s OS, services, and potential vulnerabilities is needed in a single pass.
-
-- **`--script=<custom>` (Advanced NSE)**: Runs a user‑specified script or script category (e.g., `http-enum`, `http-vuln-cve2017-5638`).  
-  *Example*: `nmap --script http-enum target.com`  
-  *When to use*: For targeted checks – e.g., enumerating directories, testing for specific CVEs, or extracting HTTP headers – bypassing the broad default set.
-
-**MITRE ATT&CK Techniques (not previously cited)**:  
-- T1049 (System Network Connections Discovery) – through `-sC` and `-A` discovering web service endpoints.  
-- T1016 (System Network Configuration Discovery) – via `-O` identifying the target OS.
-
-**Authoritative Sources**:  
-- Nmap Reference Guide: [https://nmap.org/book/man.html](https://nmap.org/book/man.html)  
-- MITRE ATT&CK: [https://attack.mitre.org/techniques/T1016/](https://attack.mitre.org/techniques/T1016/) & [https://attack.mitre.org/techniques/T1049/](https://attack.mitre.org/techniques/T1049/)
-
 ### Common Pitfalls & Result Validation
 
 When testing web applications, analysts often misinterpret tool outputs or overlook critical validation steps, leading to false positives or missed vulnerabilities. A frequent mistake is **assuming all reflected input is vulnerable to XSS (T1189: Drive-by Compromise)**—many modern frameworks auto-escape user input, but analysts may fail to verify this by testing with a benign payload (e.g., `<script>alert(1)</script>`) and inspecting the rendered DOM. Similarly, **over-reliance on automated scanners** (e.g., Burp Suite or OWASP ZAP) can miss logic flaws, such as insecure direct object references (IDOR), where manual testing (e.g., parameter tampering) is required to confirm access control failures.

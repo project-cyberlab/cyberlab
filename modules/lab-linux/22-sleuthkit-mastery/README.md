@@ -181,35 +181,6 @@ These commands bridge gaps in traditional forensic workflows, enabling deeper an
 To effectively hunt and detect threats, it's crucial to analyze logs from various sources, including Windows Event IDs and network traffic captures. For instance, detecting `T1190: Exploit Public-Facing Application` and `T1204: User Execution` requires monitoring Windows Event ID 4688 for suspicious process creations and command-line arguments. Additionally, analyzing Zeek logs for unusual HTTP requests or Suricata alerts for potential exploit attempts can help identify malicious activity. Threat hunters can pivot on fields like user agents, source IP addresses, or DNS queries to uncover related events. By leveraging these log sources and detection logic, security teams can engineer targeted detection rules to identify and disrupt attacker techniques. For more information on threat hunting and detection engineering, visit the Cyber and Infrastructure Security Agency's (CISA) website at [https://www.cisa.gov](https://www.cisa.gov) or the National Institute of Standards and Technology's (NIST) Computer Security Resource Center at [https://csrc.nist.gov](https://csrc.nist.gov).
 
 
-### Essential Commands & Features
-
-Mastering block-level recovery and signature-based carving is critical for forensic investigations. Below are **three undemonstrated but essential SleuthKit commands**, each with a concrete example and use case:
-
-1. **`blkls` (Block List)**
-   Extracts unallocated or slack space from a disk image for deeper analysis. Use this when recovering deleted files or analyzing disk artifacts left in unallocated blocks.
-   ```bash
-   blkls -A disk.img > unallocated.raw
-   ```
-   *Why?* Unallocated space often contains remnants of deleted files (e.g., logs, malware). This aligns with **T1074.001 (Data Staged: Local Data Staging)** where adversaries hide data in slack space.
-
-2. **`blkcalc` (Block Calculator)**
-   Maps block addresses between a raw image and a carved file (e.g., from `blkls`). Use this to correlate carved data with its original disk location.
-   ```bash
-   blkcalc -u disk.img 1024
-   ```
-   *Why?* Critical for attributing carved artifacts to specific disk regions, aiding in reconstructing attacker activity (e.g., **T1560.001 (Archive Collected Data: Archive via Utility)**).
-
-3. **`sigfind` (Signature Finder)**
-   Scans for file signatures (magic numbers) in raw data. Use this to recover files when headers/footers are intact but metadata is lost.
-   ```bash
-   sigfind -b 512 -o 0xFFD8FF JPEG disk.img
-   ```
-   *Why?* Detects fragmented or partially overwritten files, such as those hidden via **T1564.003 (Hide Artifacts: Hidden Window)**.
-
-**Sources:**
-- [SleuthKit Man Pages (blkcalc, blkls, sigfind)](https://www.sleuthkit.org/sleuthkit/man/)
-- [DFIR Review: File Carving with SleuthKit](https://www.dfir.review/2021/03/15/file-carving-with-sleuthkit/)
-
 ### Adversary Emulation & Red-Team Perspective
 
 Attackers leverage **The Sleuth Kit (TSK)** and its utilities (e.g., `fls`, `icat`, `mmls`) to conduct **file system reconnaissance** and **data exfiltration** while minimizing forensic footprints. A red team might abuse TSK to:
@@ -234,46 +205,6 @@ Attackers leverage **The Sleuth Kit (TSK)** and its utilities (e.g., `fls`, `ica
 - [MITRE ATT&CK: T1555.003](https://attack.mitre.org/techniques/T1555/003/)
 - [DFIR Review: NTFS ADS Forensics](https://www.dfir.review/2021/03/15/ntfs-alternate-data-streams-forensics/)
 
-
-### Essential Commands & Features
-
-Mastering **The Sleuth Kit (TSK)** requires familiarity with its most powerful yet underutilized commands. Below are four critical tools, their use cases, and runnable examples to extract deeper forensic insights:
-
-1. **`fsstat` – File System Details**
-   Reveals metadata about the file system, including layout, block size, and inode ranges. Critical for identifying anomalies (e.g., hidden partitions) or validating forensic integrity.
-   **Example:**
-   ```bash
-   fsstat -f ext4 disk_image.dd
-   ```
-   **Use Case:** Detect file system manipulation (e.g., **T1564.002: Hidden Files and Directories**).
-
-2. **`blkcat` – Block-Level Data Extraction**
-   Dumps raw data from specific disk blocks, bypassing file system structures. Ideal for recovering deleted artifacts or analyzing slack space.
-   **Example:**
-   ```bash
-   blkcat -f ntfs disk_image.dd 1024 > block_1024.raw
-   ```
-   **Use Case:** Extract obfuscated payloads (e.g., **T1027.002: Software Packing**).
-
-3. **`srch_strings` – Embedded String Analysis**
-   Searches for ASCII/Unicode strings in unallocated space or files, uncovering hidden commands, URLs, or malware configurations.
-   **Example:**
-   ```bash
-   srch_strings -a -t d disk_image.dd | grep "http"
-   ```
-   **Use Case:** Identify C2 infrastructure (e.g., **T1071.001: Web Protocols**).
-
-4. **`hfind` – Hash Lookup**
-   Compares file hashes against known-good/bad databases (e.g., NSRL, custom IOCs). Essential for triage and malware identification.
-   **Example:**
-   ```bash
-   hfind -i md5sum known_hashes.txt file_hash.md5
-   ```
-   **Use Case:** Detect malicious binaries (e.g., **T1583.001: Acquire Infrastructure: Domains**).
-
-**Authoritative Sources:**
-- [TSK Command Reference (GitLab)](https://gitlab.com/sleuthkit/sleuthkit/-/wikis/Command-Line-Tools)
-- [DFIR Review: TSK Deep Dive](https://www.dfir.review/2021/03/15/sleuthkit-forensic-analysis/)
 
 ### Detection Guidance
 

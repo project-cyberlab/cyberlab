@@ -155,22 +155,6 @@ CyberChef’s CLI (`cyberchef`) and Didier Stevens’ `base64dump.py` offer powe
 To enhance threat hunting and detection engineering capabilities, CyberChef can be utilized to analyze logs from various sources, such as Windows Event IDs, Zeek, or Suricata. For instance, analyzing Windows Event ID 4688 (Process Creation) can help detect techniques like [T1625](https://attack.mitre.org/techniques/T1625/) - "T1625: Compile After Delivery" and [T1497](https://attack.mitre.org/techniques/T1497/) - "T1497: Virtualization/Sandbox Evasion". By focusing on specific fields like `CommandLine` or `ParentProcessId`, security teams can identify suspicious process creations that may indicate malicious activity. Additionally, threat hunters can pivot on IP addresses, domains, or file hashes to uncover related events and identify potential attack patterns. By leveraging these capabilities, security teams can improve their detection engineering and threat hunting workflows. For more information on threat hunting and detection engineering, visit the [Cyber and Infrastructure Security Agency (CISA)](https://www.cisa.gov/) or the [National Institute of Standards and Technology (NIST)](https://www.nist.gov/) websites.
 
 
-### Essential Commands & Features
-
-While the module's recipes cover many drag-and-drop operations, the CyberChef CLI and `base64dump.py` offer powerful flags often overlooked during automated or command-line triage. Use CyberChef’s `--input` and `--output` to specify files and `--modifiers` to define the exact recipe inline—critical for integrating into scripts that analyse hundreds of samples. For example:
-```
-cyberchef --input encoded.b64 --output decoded.txt --modifiers 'From Base64' 'Decode text'
-```
-When you need to isolate specific parts of a base64 blob, `base64dump.py --cut 3-7` extracts lines 3 through 7, `--find "CreateProcess"` searches for strings, and `--hexdump` shows a hex/ASCII side‑by‑side view—essential for spotting shellcode or embedded PE headers. Run:
-```
-base64dump.py sample.txt --cut 1-10 --find "MZ" --hexdump
-```
-This allows rapid identification of **T1055.012** (Process Injection: Process Hollowing) when attackers embed hollowed executables, or **T1036.005** (Masquerading: Match Legitimate Name or Location) when they disguise payloads as benign binaries. Mastering these flags reduces manual inspection time and enables consistent, repeatable analysis.
-
-**Authoritative sources**
-- [CyberChef CLI – Official Documentation](https://gchq.github.io/CyberChef/)
-- [MITRE ATT&CK technique T1036.005 – Masquerading: Match Legitimate Name or Location](https://attack.mitre.org/techniques/T1036/005/)
-
 ### Adversary Emulation & Red-Team Perspective
 
 From an adversary’s perspective, CyberChef is a lightweight, portable utility that can be abused to obfuscate payloads, encode command-and-control (C2) traffic, or evade detection during post-exploitation. Attackers leverage CyberChef’s modular "recipes" to dynamically transform malicious artifacts—such as shellcode, scripts, or exfiltrated data—without relying on custom tooling, reducing forensic footprint. For example, **Base64 + Gzip compression** (T1001.003: *Protocol Impersonation*) can be used to encode C2 beacons, while **XOR + Hex encoding** (T1132.002: *Non-Standard Encoding*) obscures payloads in memory or network traffic. These transformations often leave minimal artifacts: temporary files in `%TEMP%`, process memory strings (e.g., `CyberChef.exe` or `From Base64`), or anomalous network requests (e.g., unusually long HTTP GET parameters).
@@ -185,30 +169,6 @@ Evasion considerations include:
 - [Red Canary: Living Off the Land Binaries and Scripts (LOLBAS)](https://lolbas-project.github.io/)
 
 
-### Essential Commands & Features
-
-CyberChef CLI and `base64dump.py` offer powerful but often underutilized flags for batch processing and deep analysis.  
-
-**CyberChef CLI File I/O** – The `--input`, `--output`, and `--modifiers` flags enable direct file‑to‑file transformations without the web interface.  
-Example: Decode a base64 file in place:  
-`cyberchef --input encoded.b64 --output decoded.txt --modifiers "FromBase64('A-Za-z0-9+/=','CRLF')"`  
-Use this when automating ingestion of encoded payloads (common in T1560.001 Archive Collected Data: Archive via Utility) or when extracting obfuscated credentials from logs (T1552.001 Unsecured Credentials: Credentials in Files).  
-
-**base64dump.py Advanced Output** – The `--hex` and `--strings` flags expose raw hex dumps and embedded ASCII strings, respectively. The `-f` (file) flag specifies input.  
-Example: Extract printable strings from all base64‑encoded segments in a binary:  
-`base64dump.py --hex --strings -f malware.bin`  
-This is essential for scanning documents or executables that conceal malicious data inside base64 blocks, a technique linked to T1027.001 (Obfuscated Files or Information: Payload Obfuscation) not already listed.  
-
-**MITRE ATT&CK Additions Not in Prior List**  
-- T1552.001 (Unsecured Credentials: Credentials in Files) – base64‑encoded passwords in config files  
-- T1560.001 (Archive Collected Data: Archive via Utility) – CyberChef’s `Gzip` or `Zip` modifiers for automated exfiltration packing  
-
-**Sources**  
-- CyberChef CLI: https://github.com/gchq/CyberChef/wiki/Command-line-version  
-- base64dump.py: https://blog.didierstevens.com/2012/03/12/base64dump-py/  
-- MITRE T1552.001: https://attack.mitre.org/techniques/T1552/001/  
-- MITRE T1560.001: https://attack.mitre.org/techniques/T1560/001/
-
 ### Detection Guidance
 
 This module teaches a forensic/analysis skill rather than a specific malware family, so no single community detection rule maps to it directly. For detection engineering on the artifacts examined here, use these authoritative sources:
@@ -218,11 +178,6 @@ This module teaches a forensic/analysis skill rather than a specific malware fam
 - MITRE ATT&CK (map findings to techniques + real-world Procedure Examples): https://attack.mitre.org/
 
 When your analysis surfaces an indicator (hash, path, registry key, network artifact), pivot to the matching ATT&CK technique for documented real-world usage, and search the Sigma/YARA repos above for a maintained rule covering it.
-
-### Essential Commands & Features
-To further enhance your skills with CyberChef and base64dump.py, it's crucial to understand additional essential commands and features. For CyberChef CLI, the `--input`, `--output`, and `--mods` flags are particularly useful. The `--input` flag allows you to specify the input file, while the `--output` flag specifies the output file. The `--mods` flag enables you to list available modules. For example, `cyberchef --input input.txt --output output.txt --mods` demonstrates how to use these flags together. When performing tasks related to [T1588: Obtain Capabilities](https://attack.mitre.org/techniques/T1588/) or [T1590: Gather Technical Data](https://attack.mitre.org/techniques/T1590/), these flags can be invaluable for managing and analyzing data. 
-For base64dump.py, flags like `--strings`, `--hexdump`, and `--find` are essential. The `--strings` flag extracts strings from the input, `--hexdump` provides a hex dump of the input, and `--find` allows you to search for specific patterns. An example command could be `base64dump.py --strings input.txt --hexdump --find "pattern"` to analyze a file thoroughly. 
-These commands and features are critical when engaging with advanced threat hunting and analysis techniques. For more detailed information on using these tools effectively, visit the official CyberChef documentation at https://cyberchef.org/ or the base64dump.py GitHub repository at https://github.com/DidierStevens/Base64Dump.
 
 ### Common Pitfalls & Result Validation
 

@@ -186,69 +186,6 @@ bphws 0x00403000, "x"
 **Flags**:
 - `r` (read), `w` (write), `x` (execute), or `rw` (read
 
-### Threat Hunting & Detection Engineering
-To enhance threat hunting and detection engineering in the context of x64dbg workflow, focus on identifying techniques that involve modifying system binaries or executing malicious code in memory. For instance, **T1497: Virtualization/Sandbox Evasion** and **T1610: Windows Management Instrumentation**, are techniques that can be detected through careful analysis of system and application logs. Monitoring Windows Event IDs such as 4688 (Process Creation) for unusual command line arguments or parent-child process relationships can help in detecting these techniques. Additionally, analyzing network traffic with tools like Zeek or Suricata for signs of WMI (Windows Management Instrumentation) abuse, such as unusual WMI query patterns, can aid in threat hunting. Pivoting on these findings, investigators can look into system calls, API hooks, or other indicators of compromise that suggest evasion or WMI exploitation. For more detailed information on threat hunting and detection techniques, visit the [Cybok Knowledge Base](https://www.cybok.org/) or [NCSC-NL Open Source](https://github.com/NCSC-NL/open-source).
-
-
-### Essential Commands & Features
-
-Master these **undemonstrated** x64dbg capabilities to accelerate reverse-engineering and malware analysis:
-
-1. **Conditional Breakpoints**
-   Use when execution hits a loop or API call *only under specific conditions* (e.g., `EAX == 0xDEADBEEF`). Right-click a breakpoint → *Edit* → enter expression, e.g., `[EAX]==0xDEADBEEF`. Critical for analyzing **T1059.003 (Command and Scripting Interpreter: Windows Command Shell)** where adversaries obfuscate payloads via environment variables.
-   ```bash
-   ; Example: Break if WriteProcessMemory is called with target PID 1234
-   [@arg3]==1234
-   ```
-
-2. **Scripting API**
-   Automate repetitive tasks (e.g., dumping unpacked code) via Python or x64dbg’s native `.scr` scripts. Load scripts via *File → Script* or `scriptload("C:\path\dump_memory.scr")`. Vital for **T1562.001 (Impair Defenses: Disable or Modify Tools)** where malware disables AV before execution.
-   ```python
-   # Python example: Dump .text section to file
-   from x64dbg import *
-   dbg.memdump(0x401000, 0x1000, "C:\\dump.bin")
-   ```
-
-3. **Memory Map/Section Analysis**
-   Inspect memory regions (*View → Memory Map*) to identify injected code or unpacked sections. Right-click a region → *Follow in Dump* to analyze raw bytes. Key for detecting **T1055.002 (Process Injection: Portable Executable Injection)**.
-   ```bash
-   ; CLI: List all executable sections
-   mem.findall("PAGE_EXECUTE_READWRITE")
-   ```
-
-4. **Hardware Breakpoints**
-   Set on *read/write/execute* of specific addresses (e.g., `DR0`–`DR3`). Right-click instruction → *Breakpoint → Hardware, on Execution*. Ideal for tracking **T1106 (Native API)** calls without software breakpoint artifacts.
-   ```bash
-   ; Set hardware BP on read of 0x403000
-   bphws 0x403000, "r"
-   ```
-
-**Sources**:
-- [x64dbg Scripting Documentation (GitBook)](https://x64dbg.com/script/)
-- [MITRE ATT&CK: T1059.003](https://attack.mitre.org/techniques/T1059/003/) | [T1562.00
-
-### Adversary Emulation & Red-Team Perspective
-
-From an adversary’s perspective, **x64dbg** is a powerful tool for dynamic binary analysis, enabling attackers to reverse engineer, modify, and weaponize legitimate software or malware. A common tactic involves **process injection (T1055.004: Asynchronous Procedure Call)** to execute malicious code within a trusted process, evading detection by blending into legitimate behavior. Attackers may use x64dbg to identify injection points, patch memory, or bypass security controls (e.g., ASLR, DEP) by analyzing runtime behavior. Another key technique is **obfuscated files or information (T1027.009: Embedded Payloads)**, where adversaries embed malicious payloads within benign executables, using x64dbg to debug and refine evasion tactics (e.g., API unhooking, string encryption).
-
-**Artifacts left behind** include:
-- Modified memory regions (e.g., `.text` section patches).
-- Unusual process handles or threads (e.g., `CreateRemoteThread` calls).
-- Debugger-specific registry keys (e.g., `HKLM\SOFTWARE\Microsoft\Windows NT\CurrentVersion\AeDebug`).
-- Logs of API calls (e.g., `VirtualAllocEx`, `WriteProcessMemory`).
-
-**Evasion considerations** include:
-- Anti-debugging checks (e.g., `IsDebuggerPresent`, `NtQueryInformationProcess`).
-- Timing-based evasion (e.g., `rdtsc` instruction analysis).
-- Disabling ETW or AMSI via runtime patches.
-
-For further reading:
-- [FireEye: Process Injection Techniques](https://www.fireeye.com/blog/threat-research/2020/03/six-facts-about-address-space-layout-randomization-on-windows.html)
-- [CrowdStrike: Adversary Tradecraft and TTPs](https://www.crowdstrike.com/blog/tech-center/process-injection/)
-
-
-### Essential Commands & Features
-
 #### **x64dbg: Conditional Breakpoints**
 Conditional breakpoints halt execution only when a specified expression evaluates to true, critical for analyzing **T1574.002 (Hijack Execution Flow: DLL Side-Loading)** or **T1137.001 (Office Application Startup: Office Template Macros)**. For example, to break when `EAX == 0xDEADBEEF` at `0x401000`:
 1. Right-click the instruction at `0x401000` → *Breakpoint* → *Set Conditional*.
@@ -285,6 +222,49 @@ Capture process memory (`.dump /ma C:\dump.dmp`) for offline analysis of **T1055
 
 **Sources:**
 - [x64dbg Scripting Documentation](https://help.x64dbg.com/en/latest/introduction/Script
+
+#### Conditional Breakpoints
+Use `SetBPX` with conditions to filter noise. For example, break only if `EAX` holds a specific API address (e.g., `VirtualAlloc`):
+```bash
+SetBPX kernel32.VirtualAlloc, "EAX == 0x7FFE0000"
+```
+**When to use**: Isolate calls with suspicious parameters (e.g., `flProtect=0x40` for `PAGE_EXECUTE_READWRITE`).
+
+#### Memory Search
+Leverage the **Memory Map** (`Alt+M`) to search for patterns (e.g., shellcode signatures) or dump regions:
+1. Right-click a memory region → **Find Pattern** (`Ctrl+B`).
+2. Search for `C3` (RET) to locate function epilogues, aiding OEP recovery in stripped binaries.
+3. Use **Find References** (`Ctrl+R`) on API addresses (e.g., `CreateRemoteThread`) to trace cross-references.
+
+**Pro Tip**: Combine with **Trace Into** (`F7`) and **Log Breakpoint** (`Shift+F2`) to record execution flow without manual stepping.
+
+**Sources**:
+- [x64dbg Official Wiki: Breakpoints](https://wiki.x64dbg.com/en/latest/commands/breakpoints/index.html)
+- [SANS FOR610: Memory Forensics & Malware Analysis](https://www.sans.org/blog/for610-memory-forensics-and-malware-analysis/)
+
+### Threat Hunting & Detection Engineering
+To enhance threat hunting and detection engineering in the context of x64dbg workflow, focus on identifying techniques that involve modifying system binaries or executing malicious code in memory. For instance, **T1497: Virtualization/Sandbox Evasion** and **T1610: Windows Management Instrumentation**, are techniques that can be detected through careful analysis of system and application logs. Monitoring Windows Event IDs such as 4688 (Process Creation) for unusual command line arguments or parent-child process relationships can help in detecting these techniques. Additionally, analyzing network traffic with tools like Zeek or Suricata for signs of WMI (Windows Management Instrumentation) abuse, such as unusual WMI query patterns, can aid in threat hunting. Pivoting on these findings, investigators can look into system calls, API hooks, or other indicators of compromise that suggest evasion or WMI exploitation. For more detailed information on threat hunting and detection techniques, visit the [Cybok Knowledge Base](https://www.cybok.org/) or [NCSC-NL Open Source](https://github.com/NCSC-NL/open-source).
+
+
+### Adversary Emulation & Red-Team Perspective
+
+From an adversary’s perspective, **x64dbg** is a powerful tool for dynamic binary analysis, enabling attackers to reverse engineer, modify, and weaponize legitimate software or malware. A common tactic involves **process injection (T1055.004: Asynchronous Procedure Call)** to execute malicious code within a trusted process, evading detection by blending into legitimate behavior. Attackers may use x64dbg to identify injection points, patch memory, or bypass security controls (e.g., ASLR, DEP) by analyzing runtime behavior. Another key technique is **obfuscated files or information (T1027.009: Embedded Payloads)**, where adversaries embed malicious payloads within benign executables, using x64dbg to debug and refine evasion tactics (e.g., API unhooking, string encryption).
+
+**Artifacts left behind** include:
+- Modified memory regions (e.g., `.text` section patches).
+- Unusual process handles or threads (e.g., `CreateRemoteThread` calls).
+- Debugger-specific registry keys (e.g., `HKLM\SOFTWARE\Microsoft\Windows NT\CurrentVersion\AeDebug`).
+- Logs of API calls (e.g., `VirtualAllocEx`, `WriteProcessMemory`).
+
+**Evasion considerations** include:
+- Anti-debugging checks (e.g., `IsDebuggerPresent`, `NtQueryInformationProcess`).
+- Timing-based evasion (e.g., `rdtsc` instruction analysis).
+- Disabling ETW or AMSI via runtime patches.
+
+For further reading:
+- [FireEye: Process Injection Techniques](https://www.fireeye.com/blog/threat-research/2020/03/six-facts-about-address-space-layout-randomization-on-windows.html)
+- [CrowdStrike: Adversary Tradecraft and TTPs](https://www.crowdstrike.com/blog/tech-center/process-injection/)
+
 
 ### Detection Signatures & Reference Artifacts
 
@@ -336,29 +316,6 @@ level: medium
 | sample sha256 | `f6e8eb45d009f97d0610007ab72b0751c7b19c9029de09ca51e766631722479c` |
 | reproduce sample | a text file containing exactly: 'cyberlab benign training sample -- module 28-x64dbg-workflow -- for detection-rule testing only
 ' |
-### Essential Commands & Features
-
-Mastering **conditional breakpoints** and **memory search** in x64dbg accelerates API tracing and Original Entry Point (OEP) discovery—critical for analyzing packed malware (e.g., **T1027.001: Software Packing**) or detecting process injection (e.g., **T1055.002: Portable Executable Injection**).
-
-#### Conditional Breakpoints
-Use `SetBPX` with conditions to filter noise. For example, break only if `EAX` holds a specific API address (e.g., `VirtualAlloc`):
-```bash
-SetBPX kernel32.VirtualAlloc, "EAX == 0x7FFE0000"
-```
-**When to use**: Isolate calls with suspicious parameters (e.g., `flProtect=0x40` for `PAGE_EXECUTE_READWRITE`).
-
-#### Memory Search
-Leverage the **Memory Map** (`Alt+M`) to search for patterns (e.g., shellcode signatures) or dump regions:
-1. Right-click a memory region → **Find Pattern** (`Ctrl+B`).
-2. Search for `C3` (RET) to locate function epilogues, aiding OEP recovery in stripped binaries.
-3. Use **Find References** (`Ctrl+R`) on API addresses (e.g., `CreateRemoteThread`) to trace cross-references.
-
-**Pro Tip**: Combine with **Trace Into** (`F7`) and **Log Breakpoint** (`Shift+F2`) to record execution flow without manual stepping.
-
-**Sources**:
-- [x64dbg Official Wiki: Breakpoints](https://wiki.x64dbg.com/en/latest/commands/breakpoints/index.html)
-- [SANS FOR610: Memory Forensics & Malware Analysis](https://www.sans.org/blog/for610-memory-forensics-and-malware-analysis/)
-
 ### Common Pitfalls & Result Validation
 
 Analysts frequently misinterpret x64dbg outputs, leading to false conclusions. A common pitfall is **overlooking anti-debugging techniques** (e.g., **T1621: Debugger Evasion**), where malware detects breakpoints or single-stepping via `IsDebuggerPresent()` or `NtQueryInformationProcess`. This can cause the sample to alter behavior or crash, invalidating analysis. Always validate by checking for suspicious API calls or conditional jumps that depend on debug-related flags. Another mistake is **assuming static disassembly matches runtime execution**, particularly with **T1648: Serverless Execution**, where code may unpack or decrypt payloads dynamically. Relying solely on static views (e.g., the *Disassembly* tab) without cross-referencing the *Memory Map* or *Dump* can miss critical artifacts.

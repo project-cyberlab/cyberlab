@@ -291,30 +291,6 @@ rule Base64_PS1_Shellcode {
 | sample sha256 | `860c2abc84d65ec960cdee8e50d659b669114e59981b7338868b78fa84e454be` |
 | reproduce sample | a text file containing exactly: 'cyberlab benign training sample -- module 54-shellcode-case -- for detection-rule testing only
 ' |
-### Essential Commands & Features
-
-To maximize `scdbg`'s analytical power, leverage these undemonstrated but critical commands for deeper shellcode inspection:
-
-1. **File/Registry Emulation**
-   - `-fopen <file>`: Emulate file operations (e.g., `scdbg -f shellcode.bin -fopen C:\temp\malware.exe`). Use when analyzing shellcode that reads/writes files (e.g., **T1005: Data from Local System**).
-   - `-snap <regkey>`: Simulate registry interactions (e.g., `scdbg -f shellcode.bin -snap HKCU\Software\Microsoft\Windows\CurrentVersion\Run`). Critical for detecting persistence mechanisms (e.g., **T1547.001: Registry Run Keys / Startup Folder**).
-
-2. **Offset Analysis**
-   - `-foff <hex>`: Skip shellcode headers to analyze embedded payloads (e.g., `scdbg -f shellcode.bin -foff 0x400`). Useful for obfuscated samples where shellcode starts at non-zero offsets.
-
-3. **Raw API Logging**
-   - `-r`: Generate a raw API call log (e.g., `scdbg -f shellcode.bin -r > api_log.txt`). Essential for dissecting complex behaviors like **T1102: Web Service** (C2 callbacks) or **T1559.001: Inter-Process Communication (Dynamic Data Exchange)**.
-
-**Example Workflow**:
-```bash
-scdbg -f embedded_shellcode.bin -foff 0x200 -fopen C:\Windows\Temp\evil.dll -r
-```
-This skips 512 bytes of padding, emulates file access, and logs API calls for post-analysis.
-
-**Sources**:
-- [SCDBG Official Documentation (Sandsprite)](http://sandsprite.com/blogs/index.php?uid=7&pid=152)
-- [REMnux Tools Guide: SCDBG](https://docs.remnux.org/discover-the-tools/analyze+malicious+documents#scdbg)
-
 ### Threat Hunting & Detection Engineering
 
 Once shellcode executes, defenders must hunt for **T1056.001 Input Capture: Keylogging** and **T1543.003 Create or Modify System Process: Windows Service**. Begin by querying **Windows Security Event ID 4697** (Service Creation) for anomalous binaries (`ImagePath` field) that lack valid signatures or reside in non-standard directories (e.g., `C:\PerfLogs\`). Pivot to **Sysmon Event ID 1** (Process Creation) to inspect parent-child relationships; shellcode often spawns `svchost.exe` or `rundll32.exe` with unusual command-line arguments (e.g., `-k UnistackSvcGroup`).

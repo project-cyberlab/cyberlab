@@ -198,74 +198,6 @@ When analyzing .NET malware with **dnSpyEx**, mastering its debugger is critical
 - [dnSpyEx Debugger Documentation (GitBook)](https://0xd4d.github.io/dnSpy/debugger.html)
 - [SANS FOR578: Advanced .NET Malware Analysis (Cheat Sheet)](https://www.sans.org/blog/for578-cheat-sheet/)
 
-### Threat Hunting & Detection Engineering
-To detect and hunt threats related to .NET reverse engineering, focus on monitoring system and application logs for suspicious activity. Analyze Windows Event ID 4688 (Process Creation) logs for unusual process execution, such as unexpected usage of `csc.exe` or `dotnet.exe`. Additionally, inspect logs for signs of [T1218](https://attack.mitre.org/techniques/T1218) (Signed Binary Proxy Execution) and [T1559](https://attack.mitre.org/techniques/T1559) (Inter-Process Communication), which may indicate attempts to execute malicious code or communicate between processes. Threat hunters can pivot on fields like `CommandLine` and `ParentProcessId` to identify potential command and control (C2) channels or malicious payloads. By integrating detection logic with real log sources, such as Windows Event Logs and Zeek or Suricata network traffic analysis, security teams can improve their ability to detect and respond to .NET reverse engineering threats. For more information on threat hunting and detection engineering, visit the [Cyber and Infrastructure Security Agency (CISA)](https://www.cisa.gov/) and [National Institute of Standards and Technology (NIST)](https://www.nist.gov/) websites.
-
-
-### Essential Commands & Features
-
-**Dynamic analysis using dnSpyEx’s debugger** goes beyond static decompilation. Three critical features not yet covered are breakpoints, edit-and-continue, and IL-level stepping.
-
-- **Breakpoints** – Set by clicking the left margin or pressing F9 when a function is highlighted. Use to pause execution at suspicious method calls (e.g., `Decrypt`, `RunPayload`) and inspect local variables, call stack, and memory. Example: right‑click `MainWindow.Loaded` → *Breakpoint* → *Break at Method*, then run the target. This stops the debugger as soon as the method enters, allowing you to evaluate runtime state.
-
-- **Edit-and-Continue (EnC)** – While paused at a breakpoint, modify IL or decompiled C# code directly in the editor. Click *Compile* (or press Ctrl+Shift+F10), then *Continue* (F5). Use to patch decryption routines or bypass logic checks without restarting the debugger. For instance, change a conditional jump to `nop` to force execution of a blocked code path – immediately revealing payload behavior.
-
-- **IL-Level Stepping** – Enable *Debug → Windows → IL Stack* and *Show IL* in the methods window. Step using F11 to advance one IL instruction at a time. Crucial when source‑level debugging fails due to obfuscation (e.g., control flow flattening). Example: after a breakpoint on an obfuscated method, switch to IL view and single‑step through each `call` and `brfalse` to reconstruct the actual control flow.
-
-**Relevant MITRE ATT&CK techniques** not previously cited:  
-- **T1055 (Process Injection)** – edit-and-continue can simulate injection by modifying a process’s code in memory.  
-- **T1622 (Debugger Evasion)** – breakpoints and IL‑level stepping help identify anti‑debugging checks (e.g., `IsDebuggerPresent` calls) to bypass them.
-
-**Authoritative references:**  
-- dnSpyEx debugging documentation: [0xd4d.github.io/dnSpy/Debugging](https://0xd4d.github.io/dnSpy/Debugging/)  
-- .NET debugging fundamentals (Microsoft): [learn.microsoft.com/en-us/dotnet/framework/debug-trace-profile/](https://learn.microsoft.com/en-us/dotnet/framework/debug-trace-profile/) *(Note: this URL is an exception from the overused list because it provides essential technical depth not fully covered elsewhere.)*
-
-### Adversary Emulation & Red-Team Perspective
-
-From an adversary’s perspective, .NET reverse engineering enables both offensive tool development and post-exploitation tradecraft. Attackers frequently decompile .NET assemblies to extract hardcoded credentials, API keys, or cryptographic material (e.g., embedded in configuration files or obfuscated strings), then reuse these secrets for lateral movement or data exfiltration. A common tactic involves **T1555.004: Credentials from Password Stores – Windows Credential Manager**, where adversaries extract stored credentials from decompiled .NET applications that interact with `CredentialManager` or `ProtectedData` APIs. Additionally, attackers may modify decompiled assemblies to inject malicious payloads, such as backdoors or C2 logic, then recompile and redeploy them—a technique aligned with **T1574.008: Hijack Execution Flow – Path Interception by Search Order Hijacking**, where manipulated .NET dependencies are placed in trusted directories (e.g., `C:\Windows\Microsoft.NET\assembly`) to execute under legitimate processes.
-
-Artifacts left behind include:
-- **Decompiler tool signatures** (e.g., `dnSpy` or `ILSpy` in prefetch files or registry keys like `HKCU\Software\Microsoft\Windows\CurrentVersion\Explorer\RecentDocs`).
-- **Modified assembly metadata** (e.g., altered `AssemblyVersion` or `AssemblyFileVersion` attributes).
-- **Temporary files** (e.g., `.il` or `.cs` files in `%TEMP%` during recompilation).
-
-Evasion considerations include:
-- **Obfuscation** (e.g., using ConfuserEx or Dotfuscator to hinder static analysis).
-- **In-memory execution** (e.g., loading assemblies via `Assembly.Load()` to avoid disk artifacts).
-- **Process hollowing** (e.g., injecting .NET payloads into legitimate processes like `RegAsm.exe` to blend with normal activity).
-
-For further reading:
-- [FireEye: .NET Reverse Engineering for Red Teams](https://www.fireeye.com/blog/threat-research/2020/03/net-reverse-engineering-for-red-teams.html)
-- [Mandiant: Abusing .NET for Post-Exploitation](https://www.mandiant.com/resources/blog/abusing-net-post-exploitation)
-
-
-### Essential Commands & Features
-To further enhance your reverse engineering skills, it's crucial to master essential commands and features in tools like dnSpyEx and de4dot. For instance, in dnSpyEx, you can set breakpoints in the debugger using the `Set Breakpoint` option, allowing you to pause execution at specific points. You can also use IL stepping to step through the Intermediate Language code line by line, providing deeper insights into the program's behavior. Additionally, edit-and-continue features enable you to modify the code and continue debugging without restarting the process. These features are particularly useful when analyzing malware that employs techniques like `T1588: Obtain Capabilities` or `T1590: Gather Technical Data`, where understanding the program's flow and data manipulation is key.
-
-When using de4dot, flags like `--dont-rename` and `--strtyp-*` can be used for selective deobfuscation and analysis. For example, `de4dot --dont-rename file.exe` will deobfuscate the file without renaming types and members, helping preserve the original code structure. These techniques are essential for reverse engineers to uncover hidden or obfuscated functionalities in malicious software.
-
-For more detailed information on these tools and techniques, refer to the official documentation and resources from reputable sources, such as:
-https://www.reverse-engineering.info/
-https://resources.infosecinstitute.com/category/reverse-engineering/
-
-### Common Pitfalls & Result Validation
-
-When analyzing .NET assemblies with reverse engineering tools (e.g., dnSpy, ILSpy, or DotPeek), analysts often misinterpret obfuscated or dynamically generated code, leading to false positives or missed detections. A frequent mistake is assuming all `System.Reflection` invocations (e.g., `Assembly.Load`) are malicious—legitimate applications use reflection for plugin systems or dependency injection. To validate findings, cross-reference suspicious calls with **MITRE ATT&CK T1621 (Reflective Code Loading)** by checking for:
-- Unusual memory allocations (`VirtualAlloc`) preceding reflection.
-- Absence of digital signatures or anomalous file paths (e.g., `%TEMP%`).
-
-Another pitfall is overlooking **T1106 (Native API)** misuse, where .NET malware calls Win32 APIs (e.g., `kernel32!CreateRemoteThread`) via P/Invoke. Analysts may dismiss these as benign if the API is common, but validation requires:
-- Tracing the call chain to confirm malicious intent (e.g., process hollowing via `NtUnmapViewOfSection`).
-- Comparing against known-good baselines (e.g., Microsoft’s [.NET Framework Design Guidelines](https://learn.microsoft.com/en-us/dotnet/standard/design-guidelines/)).
-
-To avoid false conclusions, always:
-1. **Contextualize findings**: Correlate static analysis with runtime behavior (e.g., ProcMon logs).
-2. **Leverage decompiler features**: Use dnSpy’s debugger to step through obfuscated code dynamically.
-3. **Consult authoritative references**: For .NET-specific threats, see the [CERT-EU .NET Reverse Engineering Guide](https://cert.europa.eu/static/WhitePapers/CERT-EU-SWP_17-002.pdf) or [MalAPI.io](https://malapi.io) for API misuse patterns.
-
-
-### Essential Commands & Features
-
 #### **dnSpyEx: Advanced Debugging Techniques**
 1. **Debugger Breakpoints with Conditions**
    Set conditional breakpoints to pause execution only when specific criteria are met (e.g., a variable equals a value). Right-click a line in the decompiled code → *Breakpoint* → *Insert Breakpoint* → *Condition*. Example:
@@ -308,6 +240,45 @@ To avoid false conclusions, always:
 
 **Sources:**
 - [dnSpyEx Debugger Documentation (
+
+### Threat Hunting & Detection Engineering
+To detect and hunt threats related to .NET reverse engineering, focus on monitoring system and application logs for suspicious activity. Analyze Windows Event ID 4688 (Process Creation) logs for unusual process execution, such as unexpected usage of `csc.exe` or `dotnet.exe`. Additionally, inspect logs for signs of [T1218](https://attack.mitre.org/techniques/T1218) (Signed Binary Proxy Execution) and [T1559](https://attack.mitre.org/techniques/T1559) (Inter-Process Communication), which may indicate attempts to execute malicious code or communicate between processes. Threat hunters can pivot on fields like `CommandLine` and `ParentProcessId` to identify potential command and control (C2) channels or malicious payloads. By integrating detection logic with real log sources, such as Windows Event Logs and Zeek or Suricata network traffic analysis, security teams can improve their ability to detect and respond to .NET reverse engineering threats. For more information on threat hunting and detection engineering, visit the [Cyber and Infrastructure Security Agency (CISA)](https://www.cisa.gov/) and [National Institute of Standards and Technology (NIST)](https://www.nist.gov/) websites.
+
+
+### Adversary Emulation & Red-Team Perspective
+
+From an adversary’s perspective, .NET reverse engineering enables both offensive tool development and post-exploitation tradecraft. Attackers frequently decompile .NET assemblies to extract hardcoded credentials, API keys, or cryptographic material (e.g., embedded in configuration files or obfuscated strings), then reuse these secrets for lateral movement or data exfiltration. A common tactic involves **T1555.004: Credentials from Password Stores – Windows Credential Manager**, where adversaries extract stored credentials from decompiled .NET applications that interact with `CredentialManager` or `ProtectedData` APIs. Additionally, attackers may modify decompiled assemblies to inject malicious payloads, such as backdoors or C2 logic, then recompile and redeploy them—a technique aligned with **T1574.008: Hijack Execution Flow – Path Interception by Search Order Hijacking**, where manipulated .NET dependencies are placed in trusted directories (e.g., `C:\Windows\Microsoft.NET\assembly`) to execute under legitimate processes.
+
+Artifacts left behind include:
+- **Decompiler tool signatures** (e.g., `dnSpy` or `ILSpy` in prefetch files or registry keys like `HKCU\Software\Microsoft\Windows\CurrentVersion\Explorer\RecentDocs`).
+- **Modified assembly metadata** (e.g., altered `AssemblyVersion` or `AssemblyFileVersion` attributes).
+- **Temporary files** (e.g., `.il` or `.cs` files in `%TEMP%` during recompilation).
+
+Evasion considerations include:
+- **Obfuscation** (e.g., using ConfuserEx or Dotfuscator to hinder static analysis).
+- **In-memory execution** (e.g., loading assemblies via `Assembly.Load()` to avoid disk artifacts).
+- **Process hollowing** (e.g., injecting .NET payloads into legitimate processes like `RegAsm.exe` to blend with normal activity).
+
+For further reading:
+- [FireEye: .NET Reverse Engineering for Red Teams](https://www.fireeye.com/blog/threat-research/2020/03/net-reverse-engineering-for-red-teams.html)
+- [Mandiant: Abusing .NET for Post-Exploitation](https://www.mandiant.com/resources/blog/abusing-net-post-exploitation)
+
+
+### Common Pitfalls & Result Validation
+
+When analyzing .NET assemblies with reverse engineering tools (e.g., dnSpy, ILSpy, or DotPeek), analysts often misinterpret obfuscated or dynamically generated code, leading to false positives or missed detections. A frequent mistake is assuming all `System.Reflection` invocations (e.g., `Assembly.Load`) are malicious—legitimate applications use reflection for plugin systems or dependency injection. To validate findings, cross-reference suspicious calls with **MITRE ATT&CK T1621 (Reflective Code Loading)** by checking for:
+- Unusual memory allocations (`VirtualAlloc`) preceding reflection.
+- Absence of digital signatures or anomalous file paths (e.g., `%TEMP%`).
+
+Another pitfall is overlooking **T1106 (Native API)** misuse, where .NET malware calls Win32 APIs (e.g., `kernel32!CreateRemoteThread`) via P/Invoke. Analysts may dismiss these as benign if the API is common, but validation requires:
+- Tracing the call chain to confirm malicious intent (e.g., process hollowing via `NtUnmapViewOfSection`).
+- Comparing against known-good baselines (e.g., Microsoft’s [.NET Framework Design Guidelines](https://learn.microsoft.com/en-us/dotnet/standard/design-guidelines/)).
+
+To avoid false conclusions, always:
+1. **Contextualize findings**: Correlate static analysis with runtime behavior (e.g., ProcMon logs).
+2. **Leverage decompiler features**: Use dnSpy’s debugger to step through obfuscated code dynamically.
+3. **Consult authoritative references**: For .NET-specific threats, see the [CERT-EU .NET Reverse Engineering Guide](https://cert.europa.eu/static/WhitePapers/CERT-EU-SWP_17-002.pdf) or [MalAPI.io](https://malapi.io) for API misuse patterns.
+
 
 ### Detection Signatures & Reference Artifacts
 

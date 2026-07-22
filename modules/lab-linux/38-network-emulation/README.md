@@ -159,17 +159,6 @@ Findings: (a) `update.malware-lab.example` resolves to `127.0.0.1` (INetSim's `d
 ### Essential Commands & Features
 To further enhance network emulation, it's crucial to understand advanced configurations and features of tools like INetSim and FakeNet-NG. For instance, INetSim's SMTP, FTP, and HTTPS services can be customized to mimic real-world scenarios, allowing for more realistic testing of techniques like [T1588.002, "Obfuscated Files or Information: Steganography"] and [T1595, "Active Scanning"]. To configure INetSim's SMTP service, use the command `inetsim --smtp-port 25 --smtp-username user --smtp-password pass`. For FakeNet-NG, protocol-specific listeners such as SMB can be enabled with `fakenet-ng --smb-listener`. Additionally, PCAP filtering can be applied using `tcpdump -r capture.pcap -w filtered.pcap port 80`. These features are essential for simulating complex network environments and testing detection capabilities against advanced threats. For more information on network emulation tools and techniques, visit the Cybersecurity and Infrastructure Security Agency (CISA) website at https://www.cisa.gov/ or the National Institute of Standards and Technology (NIST) Computer Security Resource Center at https://csrc.nist.gov/.
 
-### Adversary Emulation & Red-Team Perspective
-
-Adversaries weaponize network emulation to test and refine their TTPs before engaging a real target. By simulating services like HTTP, DNS, or SMTP with tools such as INetSim or custom scripts, red teams can validate C2 channel reliability and evasion logic in a controlled sandbox. A concrete technique is **T1572 (Protocol Tunneling)**, where an attacker encapsulates C2 traffic within a commonly allowed protocol (e.g., DNS tunneling). Using an emulated DNS server, the adversary encodes exfiltration data and command responses in DNS TXT or AAAA records, making the traffic appear as normal resolution queries. Artifacts include anomalous query frequency, unusually long domain strings, or base64-encoded strings in TXT records. To further bypass network detection, the adversary applies **T1573.001 (Encrypted Channel: Symmetric Cryptography)**—hardcoding AES-256 keys within the beacon to encrypt all tunneled payloads, forcing defenders to decrypt otherwise benign-looking traffic. Evasion considerations: randomizing subdomain lengths, mixing with legitimate DNS traffic, and using custom TTL values to elude deep-packet inspection. In an emulated lab, these tactics help simulate real-world persistent adversaries, mirroring nation-state operations that rely on covert channels for long-term access.
-
-**Sources:**  
-- SANS: "Protocol Tunneling and the Threat of DNS" – https://www.sans.org/white-papers/1040/  
-- Microsoft Learn: "Encrypted Channel: Symmetric Cryptography" – https://learn.microsoft.com/en-us/defender-for-identity/cas-isp-alert-encrypted-channel
-
-
-### Essential Commands & Features
-
 #### **INetSim: Custom SMTP/FTP/HTTPS Certificates**
 To emulate realistic services with valid TLS certificates (critical for **T1557.002 "Adversary-in-the-Middle: ARP Cache Poisoning"** or **T1573.002 "Encrypted Channel: Asymmetric Cryptography"**), replace INetSim’s default self-signed certs. Generate a custom certificate (e.g., using OpenSSL) and configure INetSim to use it:
 
@@ -209,6 +198,15 @@ This is essential for emulating **T1071.003 "Application Layer Protocol: Mail Pr
 **Sources:**
 - INetSim Custom Certificates: [https://www.inetsim.org/documentation.html#configuration](https://www.inetsim.org/documentation.html#configuration)
 - FakeNet-NG YAML Overrides: [https://github.com/fireeye/flare-fakenet-ng/blob/master/docs/Configuration.md](https://github.com/fireeye/flare-fakenet-ng/blob/master/docs/Configuration.md)
+
+### Adversary Emulation & Red-Team Perspective
+
+Adversaries weaponize network emulation to test and refine their TTPs before engaging a real target. By simulating services like HTTP, DNS, or SMTP with tools such as INetSim or custom scripts, red teams can validate C2 channel reliability and evasion logic in a controlled sandbox. A concrete technique is **T1572 (Protocol Tunneling)**, where an attacker encapsulates C2 traffic within a commonly allowed protocol (e.g., DNS tunneling). Using an emulated DNS server, the adversary encodes exfiltration data and command responses in DNS TXT or AAAA records, making the traffic appear as normal resolution queries. Artifacts include anomalous query frequency, unusually long domain strings, or base64-encoded strings in TXT records. To further bypass network detection, the adversary applies **T1573.001 (Encrypted Channel: Symmetric Cryptography)**—hardcoding AES-256 keys within the beacon to encrypt all tunneled payloads, forcing defenders to decrypt otherwise benign-looking traffic. Evasion considerations: randomizing subdomain lengths, mixing with legitimate DNS traffic, and using custom TTL values to elude deep-packet inspection. In an emulated lab, these tactics help simulate real-world persistent adversaries, mirroring nation-state operations that rely on covert channels for long-term access.
+
+**Sources:**  
+- SANS: "Protocol Tunneling and the Threat of DNS" – https://www.sans.org/white-papers/1040/  
+- Microsoft Learn: "Encrypted Channel: Symmetric Cryptography" – https://learn.microsoft.com/en-us/defender-for-identity/cas-isp-alert-encrypted-channel
+
 
 ### Threat Hunting & Detection Engineering
 

@@ -160,42 +160,6 @@ This targets files named `malware.exe` with a 1KB size, addressing **T1037.005 (
 To enhance threat hunting and detection engineering capabilities when using ClamAV, focus on integrating its scanning capabilities with other security tools and log sources. For instance, monitor Windows Event ID 4688 (Process Creation) to detect potential malware execution, and then pivot on the `CommandLine` field to identify suspicious command-line arguments. This can help detect techniques like [T1559](https://attack.mitre.org/techniques/T1559) (Interfering with Security Monitoring Tools) and [T1497](https://attack.mitre.org/techniques/T1497) (Virtualization/Sandbox Evasion), where attackers may attempt to evade detection by manipulating security tools or sandbox environments. Analyze Zeek logs for unusual DNS queries or HTTP requests that could indicate malware communication. Threat hunters can also leverage ClamAV's scanning results to inform their hunts, looking for patterns of suspicious files or directories that may indicate an ongoing attack. For more information on enhancing detection capabilities, visit the [Cyber and Infrastructure Security Agency (CISA)](https://www.cisa.gov/) and [National Institute of Standards and Technology (NIST)](https://www.nist.gov/) websites for guidance on threat hunting and detection engineering best practices.
 
 
-### Essential Commands & Features
-
-ClamAV’s full potential is unlocked when leveraging its daemon (`clamd`) and advanced scanning features. Below are the most useful commands and flags not yet covered, with concrete examples and tactical use cases.
-
-1. **`clamd` & `clamdscan` (Daemonized Scanning)**
-   The `clamd` daemon loads signatures into memory for faster scans, while `clamdscan` offloads scanning to the daemon. Use this for high-volume or recurring scans (e.g., server file shares).
-   ```bash
-   # Start the daemon (requires clamd.conf configuration)
-   sudo systemctl start clamav-daemon
-
-   # Scan a directory using the daemon (faster than clamscan)
-   clamdscan --fdpass /var/www/html
-   ```
-   *Targets*: [T1059.003 (Command-Line Interface)](https://attack.mitre.org/techniques/T1059/003/), [T1562.001 (Disable or Modify Tools)](https://attack.mitre.org/techniques/T1562/001/) (adversaries may disable `clamd` to evade detection).
-
-2. **Multi-Threaded Scanning (`-j`)**
-   Accelerate scans on multi-core systems by specifying threads. Ideal for large directories or time-sensitive operations.
-   ```bash
-   clamscan -j 4 --recursive /home
-   ```
-
-3. **Archive & Email Scanning (`--scan-archive`, `--scan-mail`)**
-   Detect malware embedded in archives (e.g., ZIP, RAR) or email files (e.g., `.eml`, `.mbox`). Critical for phishing investigations.
-   ```bash
-   # Scan archives recursively
-   clamscan --scan-archive=yes --recursive /backups
-
-   # Scan email files (e.g., extracted from a mail server)
-   clamscan --scan-mail=yes /var/mail
-   ```
-   *Targets*: [T1566.002 (Spearphishing Link)](https://attack.mitre.org/techniques/T1566/002/) (malicious attachments), [T1204.001 (Malicious Link)](https://attack.mitre.org/techniques/T1204/001/) (archived payloads).
-
-**Sources**:
-- [ClamAV Official: `clamd` and `clamdscan` Documentation](https://docs.clamav.net/manual/Usage/Scanning.html#clamd-and-clamdscan)
-- [SANS: ClamAV for Incident Response](https://www.sans.org/blog/clamav-for-incident-response/)
-
 ### Adversary Emulation & Red-Team Perspective
 
 From an adversary’s perspective, ClamAV’s scanning capabilities present both a detection risk and an opportunity for misdirection. Attackers may **abuse ClamAV’s signature-based detection** to validate whether their payloads are flagged before deployment, using tools like `clamscan` or `sigtool` to test malware against known signatures (e.g., **T1553.002: Code Signing**). If detected, adversaries may employ **T1027.010: Obfuscated Files or Information (Encryption for Evasion)**, encrypting or packing payloads to bypass static analysis. For example, UPX-packed binaries or custom crypters can evade ClamAV’s default signatures until runtime.
@@ -215,29 +179,6 @@ Red teams may also **manipulate ClamAV’s logs and quarantine directories** to 
 - [MITRE ATT&CK: T1553.002](https://attack.mitre.org/techniques/T1553/002/)
 - [CrowdStrike: Evasion Techniques Against ClamAV](https://www.crowdstrike.com/blog/evasion-techniques-against-clamav/)
 
-
-### Essential Commands & Features
-
-To move beyond `clamscan` and leverage ClamAV’s daemon for persistent, high‑throughput scanning, use `clamd` and `clamdscan`. Start the daemon:  
-```bash
-clamd
-```  
-Then scan using the daemon client with critical flags:  
-```bash
-clamdscan --infected --log=scan.log --move=/quarantine --bell --exclude="\.txt$" /path/to/scan
-```  
-
-- `--infected`: Print only infected files (default for `clamdscan`; explicitly forces output).  
-- `--log=FILE`: Write detection details to a specified log (essential for audits).  
-- `--move=DIR`: Automatically quarantine detected files to a directory (use for immediate isolation).  
-- `--bell`: Audible alert on detection – useful for headless monitoring scripts.  
-- `--exclude=REGEX`: Skip files matching a pattern (e.g., `--exclude="\.pdf$"` to ignore benign PDFs).  
-
-When and why: Use daemon mode for repeated scans (e.g., cron jobs, file‑integrity monitoring) – it loads signature databases once, reducing overhead. The `--move` flag operationalizes quarantine, a step in incident response. `--exclude` speeds scans by omitting low‑risk extensions. These features directly address adversary techniques that deliver malware via web channels (T1071.001 – Application Layer Protocol: Web Protocols) or exploit client‑side vulnerabilities (T1203 – Exploitation for Client Execution).  
-
-**Authoritative Sources**  
-- ClamAV official usage guide: [docs.clamav.net/manual/Usage/Scanning.html](https://docs.clamav.net/manual/Usage/Scanning.html#clamd-and-clamdscan)  
-- SANS Internet Storm Center diary on ClamAV scanning: [isc.sans.edu/diary/28112](https://isc.sans.edu/diary/28112)
 
 ### Detection Signatures & Reference Artifacts
 
@@ -289,14 +230,6 @@ level: low
 | sample filename | `eicar.com` |
 | sample sha256 | `275a021bbfb6489e54d471899f7db9d1663fc695ec2fe2a2c4538aabf651fd0f` |
 | reproduce sample | the EICAR standard anti-virus test string |
-### Essential Commands & Features
-
-To elevate your ClamAV scanning, master the `clamd` daemon and `clamdscan` client for rapid, repeated scans. Configure `clamd.conf` (set `TCPSocket 3310`), start the daemon with `systemctl start clamav-daemon`, then scan using `clamdscan --fdpass /target/dir` – the daemon stays loaded, reducing signature reload overhead. For one-off scans with actions, use `clamscan` with `--bell` to audibly alert on detection, `--move=/quarantine` to relocate infected files (preserving forensics), and `--remove` to delete them (use with caution). Example: `clamscan --bell --move=/tmp/infected -r /home/user/downloads`. For YARA, employ the `yara` command with a compiled rule set: `yara -s suspicious.yar target.exe` prints matching strings. Use YARA to detect custom patterns that ClamAV misses, such as specific registry modifications tied to T1564.001 (Hide Artifacts: Hidden Files and Directories) or anomalous DLL loads indicating T1574.001 (Hijack Execution Flow: DLL Search Order Hijacking). Combine `clamdscan` with YARA in a pipeline: `yara rules.yar /path/to/file | grep "malware" && clamdscan /path/to/file`.
-
-**Authoritative References:**
-- Debian man page for `clamdscan`: https://manpages.debian.org/buster/clamav/clamdscan.1.en.html
-- YARA official documentation: https://virustotal.github.io/yara/
-
 ### Common Pitfalls & Result Validation
 
 Analysts often misinterpret ClamAV scan results due to **over-reliance on default signatures** or **misconfigured scan parameters**, leading to false negatives or positives. A frequent mistake is failing to update signatures (`freshclam`) before scanning, which misses recent threats. Another pitfall is ignoring **contextual validation**—e.g., flagging benign files (like `eicar.com`) as malicious without cross-referencing with other tools (e.g., YARA rules or VirusTotal). Additionally, analysts may overlook **obfuscated payloads** (e.g., [T1027.005: Indicator Removal from Tools](https://attack.mitre.org/techniques/T1027/005/)) or **packed executables**, which ClamAV might not detect without heuristic analysis (`--detect-pua`).

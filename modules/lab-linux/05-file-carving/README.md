@@ -181,14 +181,6 @@ When carving files with **foremost** and **scalpel**, mastering advanced flags u
 - Foremost man page: [https://linux.die.net/man/1/foremost](https://linux.die.net/man/1/foremost)
 - Scalpel GitHub Wiki: [https://github.com/sleuthkit/scalpel/wiki](https://github.com/sleuthkit/scalpel/wiki)
 
-### Threat Hunting & Detection Engineering
-To detect file carving techniques, threat hunters can monitor Windows Event ID 4663, which logs file deletion events, and look for suspicious patterns such as multiple deletions of small files in a short timeframe. Additionally, analyzing Zeek's `http` log for unusual HTTP request patterns, such as multiple requests for small files or files with unusual extensions, can help identify potential file carving activity. This technique is related to [T1218](https://attack.mitre.org/techniques/T1218) - Signed Binary Proxy Execution and [T1222](https://attack.mitre.org/techniques/T1222) - File and Directory Permissions Modification. Threat hunters can pivot on these findings by investigating related logs, such as Windows Event ID 4657, which logs file permission changes, and looking for other indicators of malicious activity. For more information on threat hunting and detection engineering, see the [Cybersecurity and Infrastructure Security Agency (CISA) website](https://www.cisa.gov/) and the [National Institute of Standards and Technology (NIST) Special Publication 800-53](https://nvlpubs.nist.gov/nistpubs/SpecialPublications/NIST.SP.800-53r5.pdf).
-
-
-### Essential Commands & Features
-
-Foremost and Scalpel offer powerful, undocumented or under-documented features that can significantly enhance file carving efficiency during incident response. Below are the most useful commands and flags not yet covered, with concrete examples and tactical use cases.
-
 #### **Foremost: Custom File Types (`-t`) and Timestamping (`-T`)**
 - **`-t <type>`**: Carve for custom file signatures not in the default configuration. Useful when adversaries embed data in non-standard formats (e.g., **T1027.002 Obfuscated Files or Information: Software Packing**).
   ```bash
@@ -219,46 +211,6 @@ Foremost and Scalpel offer powerful, undocumented or under-documented features t
 - [Foremost Man Page (Digital Corpora)](https://digitalcorpora.org/docs/foremost.html)
 - [Scalpel GitHub Wiki (GitHub)](https://github.com/sleuthkit/scalpel/wiki)
 
-### Adversary Emulation & Red-Team Perspective
-From an adversary's perspective, file carving can be used to recover sensitive information from compromised systems, such as encrypted files or deleted data. Attackers may employ techniques like [T1552](https://attack.mitre.org/techniques/T1552) - "Unsecured Credentials: Credentials In Files" to search for unsecured credentials within carved files. Additionally, [T1530](https://attack.mitre.org/techniques/T1530) - "Data from Local System" can be used to gather data from local systems, including carved files. When using file carving for malicious purposes, attackers may attempt to evade detection by modifying file system timestamps or using code obfuscation techniques. Artifacts left behind by file carving activities may include temporary files, log entries, or altered file system metadata. To stay ahead of these threats, security professionals should familiarize themselves with the latest adversary tactics, techniques, and procedures (TTPs). For more information on file carving and digital forensics, visit the [National Institute of Standards and Technology (NIST)](https://www.nist.gov/itl/ssd/software-quality-group) or the [Cybersecurity and Infrastructure Security Agency (CISA)](https://us-cert.cisa.gov/) websites.
-
-
-### Essential Commands & Features
-
-When performing file carving, mastering advanced tool flags can significantly improve recovery accuracy and efficiency. Below are **undemonstrated but critical** commands for `foremost`, `scalpel`, and `bulk_extractor`, with concrete examples and use cases.
-
-#### **Foremost**
-- **`-T` (Timestamp)**: Appends the start time to the output directory name, useful for tracking multiple carving sessions.
-  ```bash
-  foremost -T -i disk.img -o /recovered_files
-  ```
-  *Use when*: Running sequential carves (e.g., during incident response) to avoid overwriting results.
-
-- **`-d` (Indirect Blocks)**: Enables carving of files referenced by indirect block pointers (e.g., in ext3/4 filesystems).
-  ```bash
-  foremost -d -t jpg,pdf -i disk.img
-  ```
-  *Use when*: Recovering files from corrupted or partially overwritten filesystems (e.g., **T1074.001 Data Staged**).
-
-- **`-i` (Input List)**: Processes multiple input files listed in a text file (one per line).
-  ```bash
-  echo "disk1.img\ndisk2.img" > inputs.txt && foremost -i inputs.txt -o /recovered
-  ```
-  *Use when*: Batch-processing disk images (e.g., **T1560.002 Archive Collected Data: Archive via Library**).
-
-#### **Scalpel**
-- **`-b` (Skip Fragmented)**: Skips fragmented files, improving speed when fragmentation is unlikely.
-  ```bash
-  scalpel -b -o /output disk.img
-  ```
-  *Use when*: Prioritizing speed over completeness (e.g., triaging large volumes).
-
-- **`-M` (No Metadata)**: Disables metadata extraction (e.g., timestamps), reducing false positives.
-  ```bash
-  scalpel -M -o /output disk.img
-  ```
-  *Use when*: Analyzing adversary-created archives (e.g., **T1560 Archive Collected Data**).
-
 #### **Bulk Extractor**
 - **`-x all` (Disable All Scanners)**: Enables *only* specified scanners (e.g., `-E email` for email addresses).
   ```bash
@@ -269,6 +221,14 @@ When performing file carving, mastering advanced tool flags can significantly im
 **Sources**:
 - [Foremost/Scalpel Man Pages (Digital Corpora)](https://digitalcorpora.org/tools/)
 - [Bulk Extractor Documentation (GitHub)](https://github.com/simsong/bulk_extractor/wiki)
+
+### Threat Hunting & Detection Engineering
+To detect file carving techniques, threat hunters can monitor Windows Event ID 4663, which logs file deletion events, and look for suspicious patterns such as multiple deletions of small files in a short timeframe. Additionally, analyzing Zeek's `http` log for unusual HTTP request patterns, such as multiple requests for small files or files with unusual extensions, can help identify potential file carving activity. This technique is related to [T1218](https://attack.mitre.org/techniques/T1218) - Signed Binary Proxy Execution and [T1222](https://attack.mitre.org/techniques/T1222) - File and Directory Permissions Modification. Threat hunters can pivot on these findings by investigating related logs, such as Windows Event ID 4657, which logs file permission changes, and looking for other indicators of malicious activity. For more information on threat hunting and detection engineering, see the [Cybersecurity and Infrastructure Security Agency (CISA) website](https://www.cisa.gov/) and the [National Institute of Standards and Technology (NIST) Special Publication 800-53](https://nvlpubs.nist.gov/nistpubs/SpecialPublications/NIST.SP.800-53r5.pdf).
+
+
+### Adversary Emulation & Red-Team Perspective
+From an adversary's perspective, file carving can be used to recover sensitive information from compromised systems, such as encrypted files or deleted data. Attackers may employ techniques like [T1552](https://attack.mitre.org/techniques/T1552) - "Unsecured Credentials: Credentials In Files" to search for unsecured credentials within carved files. Additionally, [T1530](https://attack.mitre.org/techniques/T1530) - "Data from Local System" can be used to gather data from local systems, including carved files. When using file carving for malicious purposes, attackers may attempt to evade detection by modifying file system timestamps or using code obfuscation techniques. Artifacts left behind by file carving activities may include temporary files, log entries, or altered file system metadata. To stay ahead of these threats, security professionals should familiarize themselves with the latest adversary tactics, techniques, and procedures (TTPs). For more information on file carving and digital forensics, visit the [National Institute of Standards and Technology (NIST)](https://www.nist.gov/itl/ssd/software-quality-group) or the [Cybersecurity and Infrastructure Security Agency (CISA)](https://us-cert.cisa.gov/) websites.
+
 
 ### Common Pitfalls & Result Validation
 
@@ -286,36 +246,6 @@ Avoid false conclusions by combining carving with other techniques (e.g., memory
 - [DFIR Review: File Carving Pitfalls and Best Practices](https://www.dfir.review/file-carving-pitfalls/)
 - [NIST SP 800-86: Guide to Integrating Forensic Techniques into Incident Response](https://csrc.nist.gov/publications/detail/sp/800-86/final)
 
-
-### Essential Commands & Features
-
-Below are **critical but often overlooked** commands and flags for `foremost` and `scalpel` that extend file-carving precision and forensic utility.
-
-#### **Foremost**
-- **`-t <types>`**: Restrict carving to specific file types (e.g., `-t jpg,pdf`). Use when targeting known artifacts (e.g., exfiltrated documents or images).
-  ```bash
-  foremost -t jpg,pdf -i evidence.dd -o /output/
-  ```
-  *Relevance*: Mitigates noise during analysis of [T1036.005 "Match Legitimate Name or Location"](https://attack.mitre.org/techniques/T1036/005/) or [T1553.002 "Code Signing"](https://attack.mitre.org/techniques/T1553/002/), where adversaries disguise files.
-
-- **`-T`**: Append timestamps to output directories for chain-of-custody tracking.
-  ```bash
-  foremost -T -i evidence.dd -o /output/
-  ```
-- **`-d`**: Enable carving of indirect blocks (e.g., NTFS resident files). Critical for fragmented or non-contiguous data.
-  ```bash
-  foremost -d -i evidence.dd -o /output/
-  ```
-
-#### **Scalpel**
-- **`-b`**: Carve at the block level (default: byte-level). Essential for recovering files from damaged filesystems or carved slack space.
-  ```bash
-  scalpel -b -o /output/ evidence.dd
-  ```
-
-**Sources**:
-- [Foremost Man Page (Official)](https://foremost.sourceforge.net/foremost.html)
-- [Scalpel GitHub Wiki (DFIR Review)](https://github.com/sleuthkit/scalpel/wiki)
 
 ### Detection Signatures & Reference Artifacts
 

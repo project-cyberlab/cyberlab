@@ -186,18 +186,6 @@ pe-bear --file modified.exe --rich-header
 - [PE-bear GitHub Wiki: Advanced Features](https://github.com/hasherezade/pe-bear/wiki/Advanced-Features)
 - [FireEye: Rich Header Analysis in Malware](https://www.fireeye.com/blog/threat-research/2019/08/rich-headers-leveraging-metadata-to-hunt-for-malware.html)
 
-### Common Pitfalls & Result Validation
-When analyzing PE files with PE-bear, analysts often misinterpret section characteristics, particularly the combination of write and execute permissions (WX). While WX sections can indicate packed or injected code, many legitimate compilers generate `.text` and `.rdata` sections with both permissions. **Validation**: Cross-reference entropy values (PE-bear’s entropy view) with section raw data; high entropy (>7.5) in a non-packed section often signals obfuscation or encryption. Use a secondary tool like Detect It Easy (DIE) to confirm packer signatures and check for anomalies in virtual size vs. raw size. A common false conclusion is assuming a high-entropy section is automatically malicious, but compiled .NET and Python executables also exhibit high entropy.  
-
-Another pitfall is overlooking overlay data appended after the PE structure. Malware such as **T1553.002 (Subvert Trust Controls: Code Signing)** can attach a stolen or invalid digital signature to appear legitimate. **Validation**: Extract overlay bytes, compute their entropy, and scan with YARA rules for known shellcode patterns. Never trust a signature without verifying the certificate chain and revocation status. Additionally, malware increasingly uses **T1036.005 (Masquerading: Match Legitimate Name or Location)** by renaming sections (e.g., `.text` → `CODE`) to evade simple detections. **Validation**: Map section names against Microsoft PE specs and inspect section content rather than relying on name heuristics. Always correlate static findings with dynamic analysis or memory dumps to confirm suspicious indicators.  
-
-For authoritative guidance, refer to the PE-bear user guide by hasherezade (https://hshrzd.wordpress.com/pe-bear/) and Mandiant’s static PE analysis best practices (https://www.mandiant.com/resources/blog/static-malware-analysis-1).
-
-
-### Essential Commands & Features
-
-PE-bear and Detect It Easy (DIE) offer advanced capabilities for deep PE analysis that extend beyond basic header inspection. Below are **critical but often overlooked** commands and features, with concrete examples and use cases:
-
 #### **PE-bear: Advanced Structural Analysis**
 1. **Missing Overlay Parsing**
    Overlays (data appended after the PE’s last section) are common in malware (e.g., **T1027.001 Obfuscated Files or Information: Binary Padding**). To inspect:
@@ -239,19 +227,6 @@ DIE’s default signatures miss custom packers. Add your own:
 **Sources:**
 - PE-bear Rich Header research: [https://blog.malwarebytes.com/threat-analysis/2021/06/pe-bear-a-new-tool-for-analyzing-malicious-pes/](https://blog.mal
 
-### Threat Hunting & Detection Engineering
-
-When hunting for **PE-bear**-modified binaries, focus on **process execution chains** and **file-write events** that reveal packer or obfuscation activity. Monitor **Windows Event ID 4688** (Process Creation) for `pe-bear.exe` or its child processes (e.g., `cmd.exe`, `powershell.exe`) spawning from unusual parent processes (e.g., `explorer.exe` or `mshta.exe`). Pivot on **Event ID 11** (FileCreate) in Sysmon logs, filtering for `.exe` or `.dll` writes with anomalous **Section Headers** (e.g., mismatched `NumberOfSections` or `SizeOfImage` values). Use **Zeek’s `files.log`** to detect PE files with **unusual `mime_type`** (e.g., `application/x-dos-executable` but missing expected `MZ` header offsets) or **`entropy` > 7.5**, indicating packing (MITRE ATT&CK [T1027.004: Compile After Delivery](https://attack.mitre.org/techniques/T1027/004/)).
-
-For network-based detection, leverage **Suricata’s `fileinfo`** to alert on PE files with **`stored` != `size`** (indicative of appended data) or **`magic` mismatches** (e.g., `MZ` header but `PE` signature at non-standard offsets). Hunt for **MITRE ATT&CK [T1564.001: Hidden Files and Directories](https://attack.mitre.org/techniques/T1564/001/)** by correlating **Event ID 4663** (File Access) with **`AccessMask` 0x100000** (write attributes) on hidden/system files in `%TEMP%` or `%APPDATA%`.
-
-**Sources:**
-- [Elastic Security Labs: Detecting Packed Binaries with Sysmon](https://www.elastic.co/security-labs/detecting-packed-binaries-with-sysmon)
-- [CERT-EU: Hunting for PE-Bear and Related Packers](https://cert.europa.eu/static/WhitePapers/CERT-EU-SWP_19_002_PE-Bear.pdf)
-
-
-### Essential Commands & Features
-
 #### **PE-bear: Advanced Parsing & Analysis**
 PE-bear’s GUI obscures powerful features for dissecting evasive malware. Use these commands to uncover hidden artifacts:
 
@@ -274,26 +249,24 @@ PE-bear’s GUI obscures powerful features for dissecting evasive malware. Use t
    Compiler signatures (e.g., linker versions) help attribute malware families. In PE-bear, go to:
    `File Header → Rich Header`. Cross-reference hashes with [RichPE](https://github.com/RichHeaderResearch/RichPE) to detect spoofing.
 
-#### **DIE: Custom Signature Creation**
-Detect Engine (DIE) lacks built-in signature customization, but you can manually add YARA rules:
-1. Edit DIE’s `signatures.yar` (location: `DIE/DB/signatures.yar`).
-2. Append a rule targeting **T1059.003 Command and Scripting Interpreter: Windows Command Shell**:
-   ```yara
-   rule Detect_Malicious_Cmd_Usage {
-       strings:
-           $cmd = "cmd.exe /c" nocase
-           $powershell = "powershell -nop -w hidden" nocase
-       condition:
-           any of them
-   }
-   ```
-   *Use when*: Analyzing scripts or droppers with obfuscated command lines.
+### Common Pitfalls & Result Validation
+When analyzing PE files with PE-bear, analysts often misinterpret section characteristics, particularly the combination of write and execute permissions (WX). While WX sections can indicate packed or injected code, many legitimate compilers generate `.text` and `.rdata` sections with both permissions. **Validation**: Cross-reference entropy values (PE-bear’s entropy view) with section raw data; high entropy (>7.5) in a non-packed section often signals obfuscation or encryption. Use a secondary tool like Detect It Easy (DIE) to confirm packer signatures and check for anomalies in virtual size vs. raw size. A common false conclusion is assuming a high-entropy section is automatically malicious, but compiled .NET and Python executables also exhibit high entropy.  
 
-**Sources**:
-- PE-bear TLS/debug docs: [hasherezade’s PE-bear Wiki](https://github.com/hasherezade/pe-bear/wiki)
-- DIE signature format: [DIE GitHub Issues](https://github.com/hors
+Another pitfall is overlooking overlay data appended after the PE structure. Malware such as **T1553.002 (Subvert Trust Controls: Code Signing)** can attach a stolen or invalid digital signature to appear legitimate. **Validation**: Extract overlay bytes, compute their entropy, and scan with YARA rules for known shellcode patterns. Never trust a signature without verifying the certificate chain and revocation status. Additionally, malware increasingly uses **T1036.005 (Masquerading: Match Legitimate Name or Location)** by renaming sections (e.g., `.text` → `CODE`) to evade simple detections. **Validation**: Map section names against Microsoft PE specs and inspect section content rather than relying on name heuristics. Always correlate static findings with dynamic analysis or memory dumps to confirm suspicious indicators.  
 
-We need to produce a subsection markdown with:
+For authoritative guidance, refer to the PE-bear user guide by hasherezade (https://hshrzd.wordpress.com/pe-bear/) and Mandiant’s static PE analysis best practices (https://www.mandiant.com/resources/blog/static-malware-analysis-1).
+
+
+### Threat Hunting & Detection Engineering
+
+When hunting for **PE-bear**-modified binaries, focus on **process execution chains** and **file-write events** that reveal packer or obfuscation activity. Monitor **Windows Event ID 4688** (Process Creation) for `pe-bear.exe` or its child processes (e.g., `cmd.exe`, `powershell.exe`) spawning from unusual parent processes (e.g., `explorer.exe` or `mshta.exe`). Pivot on **Event ID 11** (FileCreate) in Sysmon logs, filtering for `.exe` or `.dll` writes with anomalous **Section Headers** (e.g., mismatched `NumberOfSections` or `SizeOfImage` values). Use **Zeek’s `files.log`** to detect PE files with **unusual `mime_type`** (e.g., `application/x-dos-executable` but missing expected `MZ` header offsets) or **`entropy` > 7.5**, indicating packing (MITRE ATT&CK [T1027.004: Compile After Delivery](https://attack.mitre.org/techniques/T1027/004/)).
+
+For network-based detection, leverage **Suricata’s `fileinfo`** to alert on PE files with **`stored` != `size`** (indicative of appended data) or **`magic` mismatches** (e.g., `MZ` header but `PE` signature at non-standard offsets). Hunt for **MITRE ATT&CK [T1564.001: Hidden Files and Directories](https://attack.mitre.org/techniques/T1564/001/)** by correlating **Event ID 4663** (File Access) with **`AccessMask` 0x100000** (write attributes) on hidden/system files in `%TEMP%` or `%APPDATA%`.
+
+**Sources:**
+- [Elastic Security Labs: Detecting Packed Binaries with Sysmon](https://www.elastic.co/security-labs/detecting-packed-binaries-with-sysmon)
+- [CERT-EU: Hunting for PE-Bear and Related Packers](https://cert.europa.eu/static/WhitePapers/CERT-EU-SWP_19_002_PE-Bear.pdf)
+
 
 ### Detection Signatures & Reference Artifacts
 

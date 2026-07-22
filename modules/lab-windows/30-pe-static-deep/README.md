@@ -210,30 +210,6 @@ https://www.mandiant.com/resources/static-analysis-malware-techniques
 https://www.crowdstrike.com/blog/common-malware-analysis-mistakes/
 
 
-### Essential Commands & Features
-
-**Overlay Parsing** (`--overlay`)  
-Appended data beyond the PE's physical end is commonly used to stash encrypted configs or additional payloads.  
-`pebear -f malware.exe --overlay` dumps overlay bytes directly.  
-*Use when* scanning for hidden data not visible in standard sections – attack groups often stash C2 configuration here (T1564.001 Hidden Files and Directories).  
-
-**TLS Callbacks** (`--tls-callbacks`)  
-TLS (Thread Local Storage) callbacks fire before the entry point, enabling stealthy execution of malicious code.  
-`pebear -f sample.exe --tls-callbacks` lists all callback function addresses and their index.  
-*Use when* malware avoids the entry point – common in loader trojans (T1204.002 User Execution: Malicious File).  
-
-**Debug Directory** (`--debug-directory`)  
-The debug directory may contain embedded CodeView data, linking to original PDB paths that reveal developer or project names.  
-`pebear -f unknown.exe --debug-directory` extracts the debug type, timestamp, and path.  
-*Use when* pivoting from a binary to developer attribution; also useful to spot tampered debug entries in fileless payloads.  
-
-**Rich Header Analysis** (`--rich-header`)  
-The Rich Header holds XOR-obfuscated compiler version info and build counts, helping profile development environments.  
-`pebear -f malware.exe --rich-header` decodes and displays the product list and counts.  
-*Use when* grouping samples by compiler family or identifying false-flagged benign tools.  
-
-For authoritative references: [Microsoft PE Format – Debug Directory](https://docs.microsoft.com/en-us/windows/win32/debug/pe-format) and [SANS – Malicious PE Overlay Analysis](https://www.sans.org/white-papers/2696/).
-
 ### Threat Hunting & Detection Engineering
 
 Once a 30+ PE file is unpacked, hunt for **T1055.012 (Process Injection: Process Hollowing)** and **T1574.002 (Hijack Execution Flow: DLL Side-Loading)** by correlating static indicators with runtime telemetry.
@@ -255,42 +231,6 @@ Once a 30+ PE file is unpacked, hunt for **T1055.012 (Process Injection: Process
 - [MITRE ATT&CK: Process Hollowing (T1055.012)](https://attack.mitre.org/techniques/T1055/012/)
 - [CISA: Detecting DLL Side-Loading (T1574.002)](https://www.cisa.gov/resources-tools/services/detecting-dll-side-loading)
 
-
-### Essential Commands & Features
-
-PE-bear provides advanced static analysis capabilities beyond basic header inspection. Below are **critical but often overlooked** commands and features, with concrete examples and their investigative use cases:
-
-1. **Missing Overlay Parsing**
-   Use the `--overlay` flag to extract and analyze appended data (e.g., embedded payloads or config files). Overlays are common in **T1027.003 Obfuscated Files or Information: Steganography** and **T1553.004 Subvert Trust Controls: Install Root Certificate**.
-   ```bash
-   pe-bear --file malware.exe --overlay overlay_dump.bin
-   ```
-   *When to use*: Suspicious file size mismatches or unexpected entropy spikes in the last section.
-
-2. **TLS Callbacks**
-   Navigate to `Optional Header > Data Directories > TLS Directory` to inspect Thread Local Storage callbacks, often abused for **T1497.003 Virtualization/Sandbox Evasion: Time Based Evasion**.
-   ```bash
-   pe-bear --file sample.exe --tls-callbacks
-   ```
-   *When to use*: Unusual entry point behavior or anti-debugging techniques.
-
-3. **Security Directory (ASLR/DEP/NX)**
-   Check `Optional Header > DllCharacteristics` for mitigation flags (e.g., `IMAGE_DLLCHARACTERISTICS_DYNAMIC_BASE` for ASLR). Disabled flags may indicate **T1562.001 Impair Defenses: Disable or Modify Tools**.
-   ```bash
-   pe-bear --file binary.exe --security-dir
-   ```
-   *When to use*: Malware targeting legacy systems or bypassing modern protections.
-
-4. **Rich Header Analysis**
-   Decode the undocumented "Rich Header" (compiler/linker metadata) via `File Header > Rich Header`. Look for anomalies like mismatched toolchains, linked to **T1587.002 Develop Capabilities: Code Signing Certificates**.
-   ```bash
-   pe-bear --file suspicious.dll --rich-header
-   ```
-   *When to use*: Attribution or detecting supply-chain tampering.
-
-**Sources**:
-- [PE-bear GitHub Wiki: Advanced Features](https://github.com/hasherezade/pe-bear/wiki/Advanced-Features)
-- [NCC Group: Rich Header Analysis](https://research.nccgroup.com/2020/01/20/rich-headers-leveraging-microsofts-undocumented-pe-header/)
 
 ### Detection Signatures & Reference Artifacts
 
@@ -346,37 +286,6 @@ rule ScanBox_Malware_Generic {
 | sample sha256 | `a09ecfb019c2af5e5ba0900b1448927bb5423d1f86ac8bc47c612473ea4e526c` |
 | reproduce sample | a text file containing exactly: 'cyberlab benign training sample -- module 30-pe-static-deep -- for detection-rule testing only
 ' |
-### Essential Commands & Features
-
-PE-bear’s advanced static analysis capabilities extend beyond basic header inspection. Below are **critical but often overlooked features**, each demonstrated with a concrete example and use case:
-
-1. **Missing Overlay Parsing**
-   Use when: Suspecting appended data (e.g., embedded payloads or config files) not reflected in section headers.
-   Example: `pe-bear -f malware.exe --overlay`
-   *Flags the overlay offset/size in the "Overlay" tab, enabling extraction via `dd if=malware.exe of=overlay.bin bs=1 skip=$OFFSET`.*
-   **MITRE ATT&CK**: [T1027.004 Obfuscated Files or Information: Compile After Delivery](https://attack.mitre.org/techniques/T1027/004/)
-
-2. **TLS Callbacks**
-   Use when: Hunting for stealthy execution (e.g., code running before `main()`).
-   Example: `pe-bear -f sample.dll --tls`
-   *Displays callback addresses in the "TLS" tab. Cross-reference with disassembly to identify suspicious pre-initialization routines.*
-   **MITRE ATT&CK**: [T1574.009 Hijack Execution Flow: Path Interception by Search Order Hijacking](https://attack.mitre.org/techniques/T1574/009/)
-
-3. **Security Directory (Certificate/Manifest)**
-   Use when: Analyzing signed binaries or side-loading risks.
-   Example: `pe-bear -f signed.exe --security`
-   *Reveals certificate thumbprints and manifest entries (e.g., `<requestedExecutionLevel>`). Validate signatures with `signtool verify /v signed.exe`.*
-   **Relevant to**: [T1553.003 Subvert Trust Controls: SIP and Trust Provider Hijacking](https://attack.mitre.org/techniques/T1553/003/)
-
-4. **Rich Header Analysis**
-   Use when: Attributing compiler/linker versions or detecting tampering.
-   Example: `pe-bear -f builder.exe --rich`
-   *Decodes the XOR’d header (e.g., `Visual Studio 2019 16.11.31702.278`). Anomalies may indicate [T1588.002 Obtain Capabilities: Tool](https://attack.mitre.org/techniques/T1588/002/).*
-
-**Authoritative Sources**:
-- PE-bear GitHub Wiki: [Advanced Features](https://github.com/hasherezade/pe-bear/wiki/Advanced-Features)
-- OALabs: [PE-Bear Deep Dive](https://www.youtube.com/watch?v=Wq
-
 ### Adversary Emulation & Red-Team Perspective
 
 From an adversary’s perspective, **30+ PE static deep analysis** is a goldmine for identifying exploitable weaknesses before execution. Attackers leverage static analysis to extract hardcoded credentials (e.g., API keys, passwords), uncover obfuscated payloads, or map out function imports/exports for **Reflective Code Loading (T1620)**—a technique where malicious code is injected into memory without touching disk, evading traditional file-based detection. For example, red teams may parse `.reloc` sections to identify memory regions suitable for **Process Hollowing (T1055.012)**, where legitimate processes are hollowed out and replaced with malicious code, leaving minimal forensic traces beyond anomalous memory artifacts.

@@ -236,36 +236,6 @@ Once the static triage artifacts are collected, pivot to **threat hunting** and 
 - [Elastic Security Labs: Detecting DLL Side-Loading (T1574.002)](https://www.elastic.co/security-labs/detecting-dll-side-loading-with-elastic-security)
 
 
-### Essential Commands & Features
-
-When automating static triage with **DIE (Detect It Easy) console (`diec.exe`)**, the following commands and flags are critical for scripting and deeper analysis but are often overlooked:
-
-- **`-json`**: Export results in JSON format for parsing in automation pipelines. Use when integrating DIE output with SIEMs or custom analysis tools.
-  ```bash
-  diec.exe -json suspicious.exe > output.json
-  ```
-  *Relevant to*: [T1027.003 Obfuscated Files or Information: Steganography](https://attack.mitre.org/techniques/T1027/003/) (detecting hidden payloads in files).
-
-- **`-d`**: Dump detailed file metadata, including entropy values and packer signatures. Ideal for identifying packed or encrypted malware.
-  ```bash
-  diec.exe -d malware.dll
-  ```
-  *Relevant to*: [T1553.002 Subvert Trust Controls: Code Signing](https://attack.mitre.org/techniques/T1553/002/) (spotting tampered or unsigned binaries).
-
-- **`-f <format>`**: Force analysis of a specific file format (e.g., `-f PE`, `-f ELF`). Useful when DIE misclassifies a file.
-  ```bash
-  diec.exe -f PE obfuscated.bin
-  ```
-
-- **Entropy Histogram Flags**: Generate entropy histograms (`-entropy`) to visualize packed/encrypted regions. Combine with `-csv` for scripting:
-  ```bash
-  diec.exe -entropy -csv sample.exe > entropy.csv
-  ```
-
-For further reference:
-- [DIE GitHub Wiki: Command-Line Options](https://github.com/horsicq/DIE-engine/wiki/Command-line-options)
-- [SANS FOR610: Reverse-Engineering Malware (DIE Usage)](https://www.sans.org/blog/for610-reverse-engineering-malware/)
-
 ### Detection Signatures & Reference Artifacts
 
 Real, community-maintained detection rules for this topic (defensive use only). The reference artifacts at the end are BENIGN, illustrative lab values -- not live indicators.
@@ -336,38 +306,6 @@ rule PowerShell_Case_Anomaly {
 | sample filename | `eicar.com` |
 | sample sha256 | `275a021bbfb6489e54d471899f7db9d1663fc695ec2fe2a2c4538aabf651fd0f` |
 | reproduce sample | the EICAR standard anti-virus test string |
-### Essential Commands & Features
-
-When automating static triage with **DIE (Detect It Easy) console (`diec.exe`)**, the following undemonstrated commands and flags are critical for scripting and deeper analysis. These enable structured output, recursive scanning, and entropy visualization—key for detecting obfuscation and packed binaries (e.g., **T1027.001: Obfuscated Files or Information** and **T1553.004: Install Root Certificate**).
-
-1. **`-json`**: Export results in JSON for parsing in SIEMs or custom tools.
-   ```bash
-   diec.exe -json suspicious.exe > output.json
-   ```
-   *Use when*: Integrating DIE with automated pipelines (e.g., Splunk, ELK).
-
-2. **`-d`**: Recursively scan directories for embedded artifacts.
-   ```bash
-   diec.exe -d C:\Temp\malware_samples\
-   ```
-   *Use when*: Analyzing nested payloads (e.g., **T1105: Ingress Tool Transfer**).
-
-3. **`-f`**: Force scan files regardless of extension (e.g., `.dat`, `.tmp`).
-   ```bash
-   diec.exe -f unknown_file.dat
-   ```
-   *Use when*: Investigating files with misleading extensions (e.g., **T1036.003: Rename System Utilities**).
-
-4. **Entropy Graph Flags**: Visualize entropy to identify packed/encrypted sections.
-   ```bash
-   diec.exe --entropy-graph suspicious.dll
-   ```
-   *Use when*: Detecting compression/encryption (e.g., **T1027.004: Compile After Delivery**).
-
-**Sources**:
-- [DIE GitHub: Command-Line Options](https://github.com/horsicq/Detect-It-Easy/blob/master/docs/CLI.md)
-- [SANS FOR578: Entropy Analysis in Malware](https://www.sans.org/blog/entropy-analysis-with-die/)
-
 ### Adversary Emulation & Red-Team Perspective
 
 From an adversary’s standpoint, static triage of a malware sample is a critical step in evasion. A red teamer emulating an advanced threat will first analyze the binary’s import tables, embedded strings, and cryptographic constants to identify which execution hooks it triggers—using **T1053.005 Scheduled Task** for persistent re‑infection, for example. The adversary crafts a task XML that launches the payload at logon or system startup, often naming it after a legitimate service (e.g., “MicrosoftEdgeUpdateTask”) to blend in. Artifacts include the scheduled task XML stored in `%WINDIR%\Tasks` and entries in the Task Scheduler’s registry under `HKLM\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Schedule\TaskCache\Tree`.

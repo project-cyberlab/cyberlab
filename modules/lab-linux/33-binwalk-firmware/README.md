@@ -202,35 +202,6 @@ Binwalk’s advanced flags unlock deeper firmware analysis, particularly for emb
 To detect potential threats in firmware, focus on monitoring system calls, network traffic, and file system modifications. Analyze Windows Event IDs 4657 and 4663 for suspicious file system access patterns, indicating potential use of **T1588: Obtain Capabilities** and **T1622: Data Encrypted for Impact** techniques. Inspect Zeek logs for unusual DNS queries or HTTP requests that may suggest malicious activity. In Suricata, examine flow logs for signs of command and control (C2) communication. Threat hunters can pivot on unusual process execution, such as unexpected instances of `cmd.exe` or `powershell.exe`, to uncover hidden threats. By monitoring these log sources and fields, defenders can identify and disrupt malicious activity. For more information on threat hunting and detection engineering, visit the Cyber and Infrastructure Security Agency (CISA) website at [https://www.cisa.gov/](https://www.cisa.gov/) and the National Institute of Standards and Technology (NIST) Computer Security Resource Center at [https://csrc.nist.gov/](https://csrc.nist.gov/).
 
 
-### Essential Commands & Features
-
-Binwalk’s power lies in its ability to recursively dissect firmware images and uncover hidden artifacts. Below are three **undemonstrated but critical** commands and features, each paired with a concrete example and use case:
-
-1. **`-M` (Matryoshka Recursive Scan)**
-   Recursively scans extracted files for nested archives or embedded filesystems (e.g., squashfs, cramfs). Use this when analyzing firmware with layered obfuscation (e.g., **MITRE ATT&CK T1027.004: Compile After Delivery**).
-   ```bash
-   binwalk -Me firmware.bin
-   ```
-   *When to use*: After initial extraction to expose deeply embedded payloads (e.g., malware hidden in bootloaders or kernel modules).
-
-2. **`-A` (Opcode Scan)**
-   Identifies executable code (e.g., ARM, MIPS, x86) by scanning for CPU opcodes. Critical for detecting **T1059.006: Python** or shellcode in non-standard binaries.
-   ```bash
-   binwalk -A firmware.bin
-   ```
-   *When to use*: To locate custom backdoors or post-exploitation tools (e.g., webshells in web server firmware).
-
-3. **`--dd` (Custom Extraction Rules)**
-   Extracts files matching user-defined criteria (e.g., by magic bytes or regex). Useful for targeting specific artifacts like **T1553.002: Code Signing** certificates or config files.
-   ```bash
-   binwalk --dd='zip archive:zip:unzip' firmware.bin
-   ```
-   *When to use*: To isolate proprietary formats (e.g., vendor-specific archives) or evasion techniques (e.g., renamed `.elf` files).
-
-**Sources**:
-- [Binwalk Wiki: Advanced Usage](https://github.com/ReFirmLabs/binwalk/wiki/Advanced-Usage)
-- [CWE-919: Weaknesses in Firmware Analysis](https://cwe.mitre.org/data/definitions/919.html) (MITRE CWE)
-
 ### Adversary Emulation & Red-Team Perspective
 
 From an adversary’s perspective, **Binwalk** is a powerful tool for **firmware reverse engineering** and **supply-chain compromise**, enabling attackers to extract, modify, and repackage malicious payloads within legitimate firmware images. A common tactic involves **T1553.003: Subvert Trust Controls: SIP and Trust Provider Hijacking**, where attackers manipulate firmware update mechanisms to bypass code-signing checks, embedding backdoors or rootkits (e.g., **T1542.004: Pre-OS Boot: ROMMONkit**) into bootloaders or kernel images. Binwalk’s ability to carve out filesystems (e.g., SquashFS, CramFS) allows adversaries to identify hardcoded credentials, API keys, or vulnerable binaries for exploitation.
@@ -251,38 +222,6 @@ From an adversary’s perspective, **Binwalk** is a powerful tool for **firmware
 - [Cisco Talos: Firmware Analysis with Binwalk (2023)](https://blog.talosintelligence.com/firmware-analysis-with-binwalk/)
 - [FireEye: Supply Chain Compromise via Firmware (2022)](https://www.fireeye.com/blog/threat-research/2022/03/supply-chain-compromise-via-firmware.html)
 
-
-### Essential Commands & Features
-
-Binwalk’s power lies in its ability to recursively dissect nested firmware images and extract hidden artifacts. Below are three **undemonstrated but critical** commands and features, each with a concrete example and use case:
-
-1. **`-M` (Matryoshka Recursive Scan)**
-   Recursively scans extracted files for additional embedded firmware or payloads, ideal for uncovering multi-layered obfuscation (e.g., [T1027.005: Indicator Removal from Tools](https://attack.mitre.org/techniques/T1027/005/)).
-   **Example:**
-   ```bash
-   binwalk -Me firmware.bin
-   ```
-   *When to use:* After initial extraction to expose nested files (e.g., squashfs inside U-Boot, or UPX-packed binaries).
-
-2. **`-A` (Opcode Scan)**
-   Detects executable code (e.g., ARM/MIPS/x86) by scanning for CPU opcodes, critical for identifying backdoors or custom implants (e.g., [T1554: Compromise Client Software Binary](https://attack.mitre.org/techniques/T1554/)).
-   **Example:**
-   ```bash
-   binwalk -A firmware.bin
-   ```
-   *When to use:* To locate non-standard executables in firmware blobs (e.g., unauthorized `telnetd` binaries).
-
-3. **`--dd` (Custom Signature Extraction)**
-   Extracts files matching user-defined signatures (e.g., YARA rules or custom headers), enabling targeted analysis of proprietary formats.
-   **Example:**
-   ```bash
-   binwalk --dd='jpeg:jpg' firmware.bin
-   ```
-   *When to use:* To isolate specific file types (e.g., embedded credentials in `.pem` files) or hunt for [T1600: Weaken Encryption](https://attack.mitre.org/techniques/T1600/) artifacts.
-
-**Sources:**
-- [Binwalk Official Wiki: Command-Line Options](https://github.com/ReFirmLabs/binwalk/wiki/Usage#command-line-options)
-- [SANS FOR578: Advanced Firmware Analysis (2023)](https://www.sans.org/blog/for578-firmware-analysis/)
 
 ### Detection Signatures & Reference Artifacts
 
@@ -333,38 +272,6 @@ level: medium
 | sample sha256 | `b3590c419f2850d0d96e170d30a2d6a967efe67c811d8c9848ff97da681a9e86` |
 | reproduce sample | a text file containing exactly: 'cyberlab benign training sample -- module 33-binwalk-firmware -- for detection-rule testing only
 ' |
-### Essential Commands & Features
-
-Binwalk’s advanced flags unlock deeper firmware analysis, particularly for obfuscated or nested artifacts. Below are three **critical but often omitted** commands with concrete use cases:
-
-1. **`-M` (Matryoshka Recursive Scan)**
-   Recursively scans extracted files for embedded payloads, ideal for multi-layered firmware (e.g., bootloaders with nested filesystems).
-   **Example:**
-   ```bash
-   binwalk -Me firmware.bin
-   ```
-   **When to use:** Detect hidden components in adversary-modified firmware (e.g., [T1553.004: Install Root Certificate](https://attack.mitre.org/techniques/T1553/004/)) or supply-chain attacks ([T1587.001: Malware](https://attack.mitre.org/techniques/T1587/001/)).
-
-2. **`-A` (Opcode Scan)**
-   Identifies executable code (e.g., ARM/MIPS binaries) by scanning for CPU opcodes, useful for spotting backdoors in stripped firmware.
-   **Example:**
-   ```bash
-   binwalk -A firmware.bin
-   ```
-   **When to use:** Uncover hardcoded implants or shellcode (e.g., [T1059.006: Python](https://attack.mitre.org/techniques/T1059/006/) in embedded scripts).
-
-3. **`--dd` (Custom Extraction Rules)**
-   Extracts files matching user-defined criteria (e.g., specific file types or entropy ranges), bypassing default filters.
-   **Example:**
-   ```bash
-   binwalk --dd='zip:.*' firmware.bin
-   ```
-   **When to use:** Recover obfuscated archives (e.g., [T1027.006: HTML Smuggling](https://attack.mitre.org/techniques/T1027/006/)) or encrypted payloads.
-
-**Sources:**
-- Binwalk Wiki: [https://github.com/ReFirmLabs/binwalk/wiki](https://github.com/ReFirmLabs/binwalk/wiki)
-- NSA Cybersecurity Technical Report: [https://media.defense.gov/2022/Jun/07/2003012355/-1/-1/0/CTR_EMBEDDED_FIRMWARE_ANALYSIS.PDF](https://media.defense.gov/2022/Jun/07/2003012355/-1/-1/0/CTR_EMBEDDED_FIRMWARE_ANALYSIS.PDF)
-
 ### Common Pitfalls & Result Validation
 
 Analysts often misinterpret `binwalk` results due to **false positives** in entropy scans or misaligned file signatures. A common mistake is assuming every detected file system (e.g., SquashFS, CramFS) is legitimate—attackers may embed **malicious payloads** disguised as benign firmware components (e.g., [T1553.005: Subvert Trust Controls: Mark-of-the-Web Bypass](https://attack.mitre.org/techniques/T1553/005/)). Always validate findings by cross-referencing extracted files with known-good firmware hashes or static analysis tools like `strings` or `Ghidra`.

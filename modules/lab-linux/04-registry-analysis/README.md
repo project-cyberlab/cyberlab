@@ -435,35 +435,6 @@ Evasion tactics include:
 - [CrowdStrike: Registry Forensics for Threat Hunters](https://www.crowdstrike.com/blog/registry-forensics-for-threat-hunters/)
 
 
-### Essential Commands & Features
-
-RegRipper’s power lies in its ability to automate deep registry analysis. Below are **undocumented or underutilized** commands and features critical for efficient investigation:
-
-1. **Recursive Plugin Execution (`-r`)**
-   Use `-r` to run a plugin **recursively** against all subkeys of a specified path. This is invaluable for uncovering persistence mechanisms (e.g., **T1547.001: Boot or Logon Autostart Execution: Registry Run Keys / Startup Folder**) or lateral movement artifacts (e.g., **T1098: Account Manipulation**).
-   ```bash
-   rip.pl -r -p winlogon -f SYSTEM
-   ```
-   *When to use*: When analyzing hives like `NTUSER.DAT` or `SOFTWARE` for nested malicious keys (e.g., `HKCU\Software\Microsoft\Windows\CurrentVersion\Run`).
-
-2. **Plugin Chaining (`-p`)**
-   Chain multiple plugins with `-p` to correlate findings in a single pass. For example, detect **T1543.003: Create or Modify System Process: Windows Service** by combining `services` and `svcdll` plugins:
-   ```bash
-   rip.pl -p services,svcdll -f SYSTEM
-   ```
-   *When to use*: To cross-reference service configurations with loaded DLLs, revealing hijacked services or malicious payloads.
-
-3. **Dynamic Plugin Discovery (`rip.pl -l`)**
-   List all available plugins with `rip.pl -l` to identify undocumented or niche plugins (e.g., `userassist` for **T1059.001: Command and Scripting Interpreter: PowerShell** execution tracking):
-   ```bash
-   rip.pl -l | grep -i "userassist\|amcache"
-   ```
-   *When to use*: When triaging unknown hives or hunting for specific artifacts (e.g., `AmCache.hve` for **T1127: Trusted Developer Utilities Proxy Execution**).
-
-**Sources**:
-- [RegRipper GitHub Wiki: Advanced Usage](https://github.com/keydet89/RegRipper3.0/wiki/Advanced-Usage)
-- [DFIR Review: RegRipper Plugin Deep Dive](https://www.dfir.review/2021/03/15/regripper-plugins-a-deep-dive/)
-
 ### Detection Signatures & Reference Artifacts
 
 Real, community-maintained detection rules for this topic (defensive use only). The reference artifacts at the end are BENIGN, illustrative lab values -- not live indicators.

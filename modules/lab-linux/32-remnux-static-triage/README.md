@@ -185,25 +185,6 @@ REMnux’s static triage tools offer deeper analysis with targeted flags and met
 - [DIE GitHub: Advanced Usage](https://github.com/horsicq/Detect-It-Easy/blob/master/docs/USAGE.md#command-line)
 - [pefile Documentation: Rich Headers](https://github.com/erocarrera/pefile/blob/wiki/PEfileFeatures.md#rich-headers)
 
-### Threat Hunting & Detection Engineering
-To enhance threat hunting and detection engineering in the context of 32-bit Remnux static triage, focus on analyzing Windows Event Logs for signs of adversary activity. Specifically, monitor Event ID 4688 (Process Creation) for unusual process executions, and Event ID 4624 (Logon) for suspicious login attempts. These events can indicate techniques like [T1550](https://attack.mitre.org/techniques/T1550) - "Use Alternate Authentication Material" and [T1497](https://attack.mitre.org/techniques/T1497) - "Virtualization/Sandbox Evasion". For network traffic analysis, utilize Zeek's `http` log to inspect HTTP requests for potential command and control (C2) communications. Threat hunters can pivot on fields like `username`, `domain`, and `dst_ip` to identify related events. Additionally, analyzing Suricata's `files` log for suspicious file downloads can reveal potential malware activity. For more information on Windows Event Logs and network traffic analysis, visit the [Cyber and Infrastructure Security Agency (CISA)](https://www.cisa.gov/) and [NSA Cybersecurity](https://www.nsa.gov/What-We-Do/Cybersecurity/) websites.
-
-
-### Essential Commands & Features
-
-While basic triage with **DIE** and **pefile** is covered, these advanced commands unlock deeper static analysis capabilities for detecting obfuscation, packing, and malicious PE artifacts.
-
-#### **DIE (Detect It Easy)**
-- **Deep Scan (`-d`)** – Recursively unpacks nested layers (e.g., UPX → custom packer). Critical for analyzing samples using **T1027.007 (Dynamic API Resolution)** or **T1562.001 (Disable or Modify Tools)**.
-  ```bash
-  diec -d suspicious.exe
-  ```
-- **All Info (`-a`)** – Extracts *all* detectable signatures (compilers, packers, protections) and entropy values. Use when investigating **T1127 (Trusted Developer Utilities Proxy Execution)**.
-  ```bash
-  diec -a suspicious.dll
-  ```
-- **Entropy Calculation** – High entropy (>7.5) suggests compression/encryption (e.g., **T1027.003 (Steganography)**). DIE displays this in the `-a` output; cross-reference with `pefile` for section-level granularity.
-
 #### **pefile (Python PE Parser)**
 - **Full PE Summary (`dump_info()`)** – Dumps headers, imports, exports, and section details in a structured format. Essential for identifying anomalous sections (e.g., `.crt` masquerading as **T1036.003 (Rename System Utilities)**).
   ```python
@@ -217,6 +198,10 @@ While basic triage with **DIE** and **pefile** is covered, these advanced comman
 **Sources**:
 - DIE Deep Scan Docs: [https://github.com/horsicq/Detect-It-Easy/blob/master/docs/CLI.md](https://github.com/horsicq/Detect-It-Easy/blob/master/docs/CLI.md)
 - pefile Advanced Usage: [https://github.com/erocarrera/pefile/blob/wiki/UsageExamples.md#dump_info](https://github.com/erocarrera/pefile/blob/wiki/UsageExamples.md#dump_info)
+
+### Threat Hunting & Detection Engineering
+To enhance threat hunting and detection engineering in the context of 32-bit Remnux static triage, focus on analyzing Windows Event Logs for signs of adversary activity. Specifically, monitor Event ID 4688 (Process Creation) for unusual process executions, and Event ID 4624 (Logon) for suspicious login attempts. These events can indicate techniques like [T1550](https://attack.mitre.org/techniques/T1550) - "Use Alternate Authentication Material" and [T1497](https://attack.mitre.org/techniques/T1497) - "Virtualization/Sandbox Evasion". For network traffic analysis, utilize Zeek's `http` log to inspect HTTP requests for potential command and control (C2) communications. Threat hunters can pivot on fields like `username`, `domain`, and `dst_ip` to identify related events. Additionally, analyzing Suricata's `files` log for suspicious file downloads can reveal potential malware activity. For more information on Windows Event Logs and network traffic analysis, visit the [Cyber and Infrastructure Security Agency (CISA)](https://www.cisa.gov/) and [NSA Cybersecurity](https://www.nsa.gov/What-We-Do/Cybersecurity/) websites.
+
 
 ### Adversary Emulation & Red-Team Perspective
 
@@ -234,41 +219,6 @@ Evasion considerations include:
 - [MITRE ATT&CK: T1027.001](https://attack.mitre.org/techniques/T1027/001/)
 - [FireEye: Red Team Techniques for Evasion](https://www.fireeye.com/blog/threat-research/2021/03/red-team-techniques-for-evasion.html)
 
-
-### Essential Commands & Features
-
-Below are **undocumented but critical** commands and features for **DIE** and **pefile** that extend static triage capabilities on REMnux. Use these to uncover obfuscated payloads, anomalous headers, and suspicious metadata tied to evasion and persistence techniques.
-
-#### **DIE (Detect It Easy)**
-- **Deep Scan (`-d`)** – Recursively unpacks nested packers (e.g., UPX → Themida) and detects obfuscation layers. Critical for analyzing **T1027.004 (Compile After Delivery)** or **T1027.006 (HTML Smuggling)**.
-  ```bash
-  diec -d suspicious.exe
-  ```
-- **All Info (`-a`)** – Extracts *every* detectable attribute (entropy, imports, sections, overlays). Useful for spotting **T1564.003 (Hidden Window)** via anomalous section names (e.g., `.rsrc` with high entropy).
-  ```bash
-  diec -a malware.dll
-  ```
-- **JSON Output** – Machine-readable output for automation (e.g., parsing with `jq`). Ideal for scripting detections of **T1553.004 (Install Root Certificate)** via anomalous digital signatures.
-  ```bash
-  diec -j infected.pdf | jq '.detects[].name'
-  ```
-
-#### **pefile (Python Library)**
-- **`dump_info()`** – Dumps *all* PE headers (DOS, NT, sections) in a structured format. Use to identify **T1542.002 (Pre-OS Boot: Component Firmware)** via unusual entry points or section alignments.
-  ```python
-  import pefile
-  pe = pefile.PE("bootkit.exe")
-  pe.dump_info()
-  ```
-- **Rich Header Parsing** – Extracts compiler/linker metadata (e.g., Visual Studio version, build timestamps). Detects **T1027.005 (Indicator Removal from Tools)** via mismatched timestamps or spoofed toolchains.
-  ```python
-  pe.parse_rich_header()
-  print(pe.RICH_HEADER)
-  ```
-
-**Sources:**
-- DIE Advanced Usage: [https://github.com/horsicq/DIE-engine/wiki/Command-Line-Options](https://github.com/horsicq/DIE-engine/wiki/Command-Line-Options)
-- pefile Documentation: [https://github.com/erocarrera/pefile/blob/wiki/UsageExamples.md](https://github.com/erocarrera/pefile/blob/wiki/UsageExamples.md)
 
 ### Detection Signatures & Reference Artifacts
 

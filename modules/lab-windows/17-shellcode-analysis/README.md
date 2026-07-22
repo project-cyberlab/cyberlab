@@ -242,44 +242,6 @@ Effective detection of shellcode delivery and execution must extend beyond proce
 - Elastic Security Labs: “Hunting for Process Injection” – https://www.elastic.co/blog/hunting-for-process-injection
 
 
-### Essential Commands & Features
-
-The following `scdbg` commands and flags unlock deeper shellcode analysis capabilities, particularly for evasive or obfuscated payloads. Use these to dissect techniques like **T1027.002 (Obfuscated Files or Information: Software Packing)** or **T1127 (Trusted Developer Utilities Proxy Execution)**:
-
-1. **`-f <file>`**: Load shellcode from a binary file (e.g., extracted from a malicious document).
-   ```bash
-   scdbg -f shellcode.bin
-   ```
-   *When to use*: Analyze raw shellcode extracted via tools like `xxd` or `dd` from memory dumps or payloads.
-
-2. **`-foff <offset>`**: Specify an entry point offset (hex) if the shellcode starts mid-file.
-   ```bash
-   scdbg -f packed.bin -foff 0x400
-   ```
-   *When to use*: Bypass packers (e.g., UPX) or custom loaders that jump to non-zero offsets.
-
-3. **`-d`**: Dump decoded/decrypted bytes to a file (`dump.bin`) during emulation.
-   ```bash
-   scdbg -f encoded.bin -d
-   ```
-   *When to use*: Extract deobfuscated payloads for further analysis (e.g., XOR-encoded shellcode).
-
-4. **`-r`**: Output raw disassembly (no emulation) to inspect instructions statically.
-   ```bash
-   scdbg -f shellcode.bin -r
-   ```
-   *When to use*: Quickly triage shellcode without execution (e.g., for **T1059.003 (Command and Scripting Interpreter: Windows Command Shell)**).
-
-5. **`-i`**: Interactive mode—step through execution with register/memory inspection.
-   ```bash
-   scdbg -f shellcode.bin -i
-   ```
-   *When to use*: Debug complex shellcode (e.g., API hashing or **T1106 (Native API)** calls).
-
-**Sources**:
-- [scdbg Official Documentation (Sandsprite)](http://sandsprite.com/blogs/index.php?uid=7&pid=152)
-- [MITRE ATT&CK: Software Packing (T1027.002)](https://attack.mitre.org/techniques/T1027/002/)
-
 ### Detection Signatures & Reference Artifacts
 
 Real, community-maintained detection rules for this topic (defensive use only). The reference artifacts at the end are BENIGN, illustrative lab values -- not live indicators.

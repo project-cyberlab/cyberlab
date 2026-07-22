@@ -207,46 +207,6 @@ To maximize **Process Monitor (Procmon)** for behavioral dynamic analysis, maste
 To enhance threat hunting and detection engineering capabilities, focus on identifying patterns of behavior that align with specific MITRE ATT&CK techniques. For instance, **T1588: Obtain Capabilities** and **T1595: Active Scanning** can be detected by analyzing network logs for unusual scan activity or by monitoring system calls for suspicious capability acquisitions. In Windows environments, monitor Event ID 4688 for command-line arguments that may indicate capability acquisition attempts. Additionally, inspect Zeek logs for unusual scan patterns, such as multiple connections to different ports within a short timeframe. Threat hunters can pivot on these findings by investigating related processes, network connections, or user accounts. By integrating these detection logic elements into a comprehensive threat hunting strategy, security teams can improve their ability to detect and respond to advanced threats. For more information on threat hunting and detection engineering, visit the Cyber and Infrastructure Security Agency (CISA) website at [https://www.cisa.gov/](https://www.cisa.gov/) or the National Institute of Standards and Technology (NIST) Computer Security Resource Center at [https://csrc.nist.gov/](https://csrc.nist.gov/).
 
 
-### Essential Commands & Features
-
-To deepen behavioral dynamic analysis with **Process Monitor (Procmon)**, leverage these undemonstrated but critical features for efficient threat hunting and forensic investigation:
-
-1. **Drop Filtered Events**
-   *When to use*: Reduce memory usage during long captures by discarding filtered events in real-time (e.g., excluding noise like `svchost.exe`).
-   *Example*:
-   ```plaintext
-   Filter → Drop Filtered Events (Ctrl+X)
-   ```
-   *Use case*: Detect **T1027.002 Obfuscated Files or Information: Software Packing** by focusing on anomalous process starts without storage overhead.
-
-2. **Load/Save Filters**
-   *When to use*: Reuse or share complex filters (e.g., for **T1562.001 Impair Defenses: Disable or Modify Tools**).
-   *Example*:
-   ```plaintext
-   Filter → Load Filter (Ctrl+L) → Select "DisableDefender.pmf"
-   ```
-   *Pre-built filters*: Download from [Sysinternals forums](https://forum.sysinternals.com/procmon-filters_topic10353.html).
-
-3. **Stack Traces**
-   *When to use*: Trace the call stack of suspicious events (e.g., DLL injection via **T1055.002 Process Injection: Portable Executable Injection**).
-   *Example*:
-   ```plaintext
-   Right-click event → Stack (Ctrl+K)
-   ```
-   *Tip*: Enable symbol servers (Options → Configure Symbols) for accurate function names.
-
-4. **Bookmarks**
-   *When to use*: Flag critical events (e.g., registry modifications tied to **T1112 Modify Registry**) for later review.
-   *Example*:
-   ```plaintext
-   Right-click event → Bookmark (Ctrl+B) → Add note: "Persistence via Run key"
-   ```
-   *Export*: Save bookmarks via File → Save → "Include bookmarks only".
-
-**Authoritative Sources**:
-- [Procmon Advanced Features (Windows Sysinternals)](https://docs.microsoft.com/en-us/sysinternals/downloads/procmon#advanced-features)
-- [SANS DFIR Procmon Cheat Sheet](https://www.sans.org/blog/process-monitor-cheat-sheet/)
-
 ### Adversary Emulation & Red-Team Perspective
 
 From a red-team perspective, **behavioral dynamic analysis evasion** is a critical tactic to bypass automated sandboxing and endpoint detection. Attackers abuse this by crafting malware that detects analysis environments (e.g., virtual machines, debuggers, or sandbox-specific artifacts) before executing malicious payloads. A common technique is **T1497.001: System Checks**, where malware queries system properties (e.g., CPU cores, memory, or registry keys like `HKLM\HARDWARE\DESCRIPTION\System\CentralProcessor\0`) to identify sandboxed or low-resource environments. If analysis conditions are detected, the malware may delay execution, exit silently, or trigger decoy behaviors (e.g., benign file operations) to mislead defenders.
@@ -266,40 +226,6 @@ To evade detection, attackers may:
 - [CrowdStrike: Adversary Tradecraft](https://www.crowdstrike.com/blog/adversary-tradecraft-how-attackers-are-evading-detection/)
 
 
-### Essential Commands & Features
-
-To maximize **Process Monitor (Procmon)** for advanced behavioral triage, leverage these undemonstrated but critical features to reduce noise and uncover hidden adversary activity:
-
-1. **Drop Filtered Events**
-   *When to use*: When real-time monitoring generates excessive noise (e.g., during high-volume operations like software updates), enabling this feature discards filtered events from memory, reducing RAM usage and improving performance.
-   **Example**:
-   ```plaintext
-   Procmon.exe /AcceptEula /Quiet /Minimized /DropFilteredEvents
-   ```
-   *Technique*: Mitigates evasion via **T1027.006 (Indicator Removal: Timestomp)** by preserving only relevant events for post-mortem analysis.
-
-2. **Stack Traces**
-   *When to use*: To trace the call stack of suspicious API calls (e.g., process injection or registry modifications), right-click an event → **Stack** (or press `Ctrl+K`). This reveals the execution chain, including DLLs and drivers.
-   **Example**:
-   ```plaintext
-   # Identify parent processes for suspicious "RegSetValue" operations (T1110.003 - Brute Force: Password Spraying).
-   Filter: Operation is "RegSetValue" AND Path contains "HKLM\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Winlogon"
-   ```
-   *Technique*: Exposes **T1055.004 (Process Injection: Asynchronous Procedure Call)** by showing injected threads’ origins.
-
-3. **Count Occurrences**
-   *When to use*: To quantify repetitive behaviors (e.g., failed logon attempts or registry key accesses), right-click a column (e.g., "Path") → **Count Occurrences**. This aggregates data for anomaly detection.
-   **Example**:
-   ```plaintext
-   # Detect lateral movement via WMI (T1047 - Windows Management Instrumentation).
-   Filter: Operation is "Process Start" AND Command Line contains "wmic"
-   Right-click "Process Name" → Count Occurrences → Sort descending.
-   ```
-
-**Authoritative Sources**:
-- [Procmon Advanced Features (Windows Sysinternals)](https://techcommunity.microsoft.com/t5/windows-blog-archive/process-monitor-v3-50/ba-p/270637)
-- [SANS DFIR: Procmon for Threat Hunting](https://www.sans.org/blog/process-monitor-for-threat-hunting/)
-
 ### Common Pitfalls & Result Validation
 
 Analysts often misinterpret behavioral dynamic analysis results due to **over-reliance on single indicators** or **ignoring environmental context**. A common mistake is treating **Process Injection (T1055.003: *Thread Execution Hijacking*)** as malicious without verifying legitimate use cases (e.g., debugging tools or AV software). Similarly, **Indicator Removal (T1070.004: *File Deletion*)** may trigger alerts for routine cleanup, leading to false positives. To avoid these pitfalls:
@@ -317,38 +243,6 @@ Analysts often misinterpret behavioral dynamic analysis results due to **over-re
 - [MITRE ATT&CK: Process Injection (T1055)](https://attack.mitre.org/techniques/T1055/)
 - [CISA: Technical Approaches to Uncovering and Remediating Malicious Activity](https://www.cisa.gov/resources-tools/resources/technical-approaches-uncovering-and-remediating-malicious-activity)
 
-
-### Essential Commands & Features
-
-Procmon’s **hidden power-user features** let you cut noise, trace execution chains, and tag critical artifacts for later analysis. Below are the three most impactful commands/features **not yet covered**, each tied to a concrete detection scenario.
-
-1. **Drop Filtered Events**
-   *When to use*: When you’ve set a tight filter (e.g., `Process Name contains "powershell"`) but still see 100K+ events, **Drop Filtered Events** instantly discards them from memory, freeing RAM and speeding up subsequent filtering.
-   *Runnable example*:
-   ```plaintext
-   Filter → Drop Filtered Events
-   ```
-   *MITRE ATT&CK*: [T1059.001 Command and Scripting Interpreter: PowerShell](https://attack.mitre.org/techniques/T1059/001/)
-
-2. **Stack Trace (Alt+K)**
-   *When to use*: To reveal the **call stack** behind a suspicious API call (e.g., `CreateRemoteThread`), pinpointing the exact DLL or injected code responsible.
-   *Runnable example*:
-   ```plaintext
-   Right-click any event → Stack (Alt+K)
-   ```
-   *MITRE ATT&CK*: [T1055.001 Process Injection: Dynamic-link Library Injection](https://attack.mitre.org/techniques/T1055/001/)
-
-3. **Bookmarks (Ctrl+B)**
-   *When to use*: Tag key artifacts (e.g., a rogue registry key or dropped DLL) for fast retrieval during reporting or team handoff.
-   *Runnable example*:
-   ```plaintext
-   Select event → Ctrl+B → Add note “Persistence via Run key”
-   ```
-   *MITRE ATT&CK*: [T1547.001 Boot or Logon Autostart Execution: Registry Run Keys / Startup Folder](https://attack.mitre.org/techniques/T1547/001/)
-
-**Sources**
-- [Sysinternals Procmon v3.90 Official Documentation (Microsoft)](https://download.sysinternals.com/files/Procmon.pdf) (pp. 12–14)
-- [SANS FOR508: Advanced Incident Response – Procmon Deep Dive](https://www.sans.org/blog/for508-advanced-incident-response-threat-hunting-training/)
 
 ### Detection Signatures & Reference Artifacts
 

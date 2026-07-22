@@ -169,22 +169,6 @@ Plaso’s `log2timeline.py` and `psteal.py` offer powerful, undemonstrated capab
 To effectively hunt and detect threats using the SuperTimeline, focus on analyzing log sources such as Windows Event IDs 4688 (Process Creation) and 4703 (Token Elevation Type), as well as Zeek's `http` and `dns` logs. Threat actors may employ techniques like [T1204](https://attack.mitre.org/techniques/T1204) (User Execution) and [T1218](https://attack.mitre.org/techniques/T1218) (Signed Binary Proxy Execution) to execute malicious code. Pivoting on fields like `Image` and `Command_Line` in Windows Event ID 4688 can help identify suspicious process creations. Additionally, analyzing `dns` logs for unusual domain name resolutions can indicate potential command and control (C2) communication. By integrating these detection logic components into a comprehensive threat hunting strategy, security teams can improve their ability to detect and respond to advanced threats. For more information on threat hunting and detection engineering, visit the [Cybok](https://cybok.org/) knowledge base or the [Center for Internet Security](https://www.cisecurity.org/) website.
 
 
-### Essential Commands & Features
-
-Beyond the basic timeline generation and filtering shown earlier, `psort.py` offers advanced flags for focused forensic analysis. Use **`--slice`** to extract events within a precise time window:  
-`psort.py -o l2tcsv -w slice_output.csv --slice '2023-06-01T00:00:00..2023-06-02T00:00:00' supertimeline.plaso`  
-This is essential when scoping an intrusion to a known breach period.  
-
-The **`--analysis`** flag invokes specific artifact parsers (e.g., `windows_events`, `chrome_autofill`). Running `psort.py --analysis windows_events --output-format json -o win_events.json supertimeline.plaso` surfaces Windows‑specific artifacts, revealing MITRE ATT&CK techniques such as **T1485 (Data Destruction)** (e.g., `mft`‑based deletion records) and **T1490 (Inhibit System Recovery)** (e.g., `vssadmin` event logs).  
-
-Exporting structured data with **`--output-format json`** enables integration with SIEMs and custom scripts. The command above demonstrates JSON output; it can be paired with `--slice` or `--analysis` for targeted extraction.  
-
-The **`--tagging`** flag applies a YAML rule file to label events with user‑defined annotations – ideal for triage. Example:  
-`psort.py --tagging my_tags.yaml --output-format json -o tagged_output.json supertimeline.plaso`  
-This immediately highlights indicators like unauthorized `schtasks` creations (mapped to T1053) or suspicious file modifications, accelerating incident response.
-
-For further reference, see the [log2timeline project documentation](https://log2timeline.net/) and [MITRE ATT&CK® enterprise techniques](https://attack.mitre.org/techniques/enterprise/).
-
 ### Adversary Emulation & Red-Team Perspective
 
 Attackers leverage **Plaso supertimelines** to reconstruct their own activities, identify forensic blind spots, or validate evasion techniques. By analyzing the same artifacts defenders collect (e.g., `$MFT`, `USN Journal`, `Event Logs`, `Prefetch`), adversaries can refine **timestomping** (T1070.006) or **indicator removal** (T1070) to obscure persistence mechanisms like **Scheduled Task/Job** (T1053). For example, an attacker might use `plaso` to verify whether their **Process Injection** (T1055.001) into `lsass.exe` left detectable traces in `Sysmon Event ID 10` or `Windows Security Event ID 4663`.
@@ -202,41 +186,6 @@ Artifacts left behind include:
 - [MITRE ATT&CK: Process Injection (T1055)](https://attack.mitre.org/techniques/T1055/)
 - [FireEye: Red Team Techniques for Evading Detection](https://www.fireeye.com/blog/threat-research/2021/08/red-team-techniques-for-evading-detection.html)
 
-
-### Essential Commands & Features
-
-Once your Plaso super-timeline (`storage.plaso`) is built, `psort.py` transforms raw events into actionable intelligence. Below are **undemonstrated but critical** filters for advanced analysis:
-
-1. **Time Slicing (`--slice`)**
-   Isolate events within a specific time window (e.g., during an incident). Useful for **T1070.004 (Indicator Removal: File Deletion)** or **T1562.001 (Impair Defenses: Disable or Modify Tools)**.
-   ```bash
-   psort.py -o jsonl --slice "2023-05-15T14:00:00 to 2023-05-15T15:30:00" storage.plaso
-   ```
-
-2. **Automated Analysis (`--analysis`)**
-   Run built-in analyzers (e.g., `browser_search`, `viper`) to flag suspicious artifacts. Critical for **T1059.003 (Command and Scripting Interpreter: Windows Command Shell)**.
-   ```bash
-   psort.py --analysis browser_search,viper -o jsonl storage.plaso
-   ```
-
-3. **JSONL Output (`--output-format jsonl`)**
-   Generate machine-readable JSON Lines for SIEM ingestion (e.g., Splunk, ELK). Pair with `--tagging` to label events.
-   ```bash
-   psort.py --output-format jsonl --tagging tag_file.txt storage.plaso > timeline.jsonl
-   ```
-
-4. **Tagging (`--tagging`)**
-   Apply custom tags (e.g., `malicious`, `lateral_movement`) to events using a text file. Essential for **T1574.002 (Hijack Execution Flow: DLL Side-Loading)**.
-   ```bash
-   # tag_file.txt:
-   # regex,tag
-   # ".*powershell.*",malicious
-   psort.py --tagging tag_file.txt storage.plaso
-   ```
-
-**Sources:**
-- [Plaso Advanced Usage (GitLab)](https://plaso.readthedocs.io/en/latest/sources/user/Advanced-usage.html#psort-py)
-- [DFIR Review: Plaso Tagging Workflow](https://www.dfir.review/2022/03/15/plaso-tagging-for-efficient-triage/)
 
 ### Common Pitfalls & Result Validation
 

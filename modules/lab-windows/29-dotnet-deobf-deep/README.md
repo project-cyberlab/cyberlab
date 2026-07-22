@@ -269,50 +269,6 @@ From an adversary’s perspective, .NET deobfuscation (e.g., via **dnSpy**, **IL
 - [CrowdStrike: Adversary Tradecraft in .NET](https://www.crowdstrike.com/blog/tech-center/dotnet-malware-analysis/)
 
 
-### Essential Commands & Features
-
-Once you’ve unpacked a .NET binary with `dnlib` or `de4dot`, **dnSpyEx** becomes your primary tool for dynamic analysis and in-memory patching. Below are the most critical—but often overlooked—commands and features for debugging and assembly editing.
-
-#### **Debugging: Breakpoints & Step-Through**
-1. **Set a Conditional Breakpoint**
-   Use this to halt execution only when a specific condition is met (e.g., a decryption routine receives a hardcoded key).
-   ```csharp
-   // Right-click a line in dnSpyEx → Breakpoint → Conditional Breakpoint
-   // Example: Break when `buffer.Length == 32` in a custom decryption method
-   buffer.Length == 32
-   ```
-   *When to use*: Analyzing **T1127 (Trusted Developer Utilities Proxy Execution)** or **T1553.002 (Code Signing)**, where adversaries abuse legitimate tools (e.g., MSBuild) to execute malicious payloads.
-
-2. **Step Into/Over External Calls**
-   Press `F11` to step into a method (e.g., `System.Reflection.Assembly.Load`) or `F10` to skip it. Critical for tracing **T1059.005 (Command and Scripting Interpreter: Visual Basic)** obfuscated payloads.
-   ```csharp
-   // Example: Step into `Assembly.Load` to inspect dynamically loaded modules
-   Assembly.Load(byteArray);  // Press F11 here
-   ```
-
-#### **Assembly Editing: Patching IL/Methods**
-1. **Edit IL Directly**
-   Right-click a method → *Edit IL Instructions* to modify intermediate language (e.g., replace a `call` with `nop` to bypass checks).
-   ```il
-   // Original: Call a malicious method
-   call Malware::DecryptData
-
-   // Patched: Replace with `nop` (0x00) to neutralize
-   nop
-   nop
-   ```
-   *When to use*: Defanging **T1562.004 (Impair Defenses: Disable or Modify System Firewall)** or **T1574.002 (Hijack Execution Flow: DLL Side-Loading)**.
-
-2. **Save Patched Assembly**
-   After editing, go to *File → Save Module* to export the modified binary. Use `dnlib` to verify changes:
-   ```bash
-   dnlib-reader.exe patched.exe --list-methods | grep "DecryptData"
-   ```
-
-**Sources**:
-- [dnSpyEx GitHub: Debugging & IL Editing](https://github.com/dnSpyEx/dnSpy/wiki/Debugging)
-- [MITRE ATT&CK
-
 ### Common Pitfalls & Result Validation
 
 When deobfuscating .NET malware, analysts often misinterpret tool outputs or overlook critical validation steps, leading to false negatives or incorrect attribution. A frequent mistake is **assuming decompiled code is executable as-is**—tools like dnSpy or ILSpy may reconstruct logic imperfectly, especially with obfuscated control flow (e.g., **T1497.003: Virtualization/Sandbox Evasion**). Always cross-validate decompiled methods against raw IL (e.g., using `ildasm` or `dnlib`) to confirm structural integrity. Another pitfall is **ignoring dynamic dependencies**: static deobfuscation may miss runtime-loaded assemblies (e.g., **T1106: Native API**), which are only revealed through behavioral analysis (e.g., API Monitor or Process Hacker). To avoid false conclusions, correlate static findings with dynamic indicators—e.g., verify deobfuscated strings against network traffic (e.g., C2 domains) or process injection artifacts (e.g., `CreateRemoteThread` calls).

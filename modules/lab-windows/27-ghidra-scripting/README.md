@@ -251,6 +251,28 @@ capa -j /malware/sample.exe  # JSON output
 - [Ghidra Headless Analyzer Docs (NSA)](https://ghidra.re/ghidra_docs/api/ghidra/app/util/headless/HeadlessAnalyzer.html)
 - [Capa Rule Development Guide (FireEye)](https://github.com/mandiant/capa/blob/master/doc/rules.md)
 
+#### Python API (`currentScript`)
+Access Ghidra’s current script context via `currentScript` to interact with the program database. Example:
+```python
+from ghidra.app.script import GhidraScript
+currentScript = getState().getScript()
+func = currentScript.getFunctionContaining(currentAddress)
+print(f"Function: {func.getName()}")
+```
+Use this to automate **T1574.009 Hijack Execution Flow: Path Interception by PATH Environment Variable** by enumerating imported functions or DLLs.
+
+#### Capa’s `-v` (Verbose) and `-j` (JSON) Flags
+Enhance capa’s output with `-v` for detailed rule matches or `-j` for machine-readable JSON. Example:
+```bash
+capa -v malware.exe  # Verbose output for manual review
+capa -j malware.exe  # JSON for automated parsing
+```
+These flags help identify **T1562.006 Indicator Removal: Timestomp** or **T1070.006 Indicator Removal: File Deletion** by surfacing evasion techniques in structured formats.
+
+**Sources:**
+- [Ghidra Headless Documentation (NSA GitHub)](https://github.com/NationalSecurityAgency/ghidra/blob/master/GhidraDocs/GhidraClass/HeadlessAnalysis.md)
+- [FireEye Capa Rules & Usage](https://github.com/fireeye/capa-rules/blob/master/doc/usage.md)
+
 ### Detection Signatures & Reference Artifacts
 
 Real, community-maintained detection rules for this topic (defensive use only). The reference artifacts at the end are BENIGN, illustrative lab values -- not live indicators.
@@ -311,37 +333,6 @@ level: high
 | sample sha256 | `b7a9e950dd6800c1c7e3a27209bc499cc7c5f5b24bee35c95d4dffa68c271eb3` |
 | reproduce sample | a text file containing exactly: 'cyberlab benign training sample -- module 27-ghidra-scripting -- for detection-rule testing only
 ' |
-### Essential Commands & Features
-
-#### Ghidra Headless Batch Mode (`-process`)
-Use Ghidra’s headless analyzer to automate script execution without launching the GUI. The `-process` flag processes a single binary, ideal for CI/CD pipelines or bulk analysis. Example:
-```bash
-analyzeHeadless /path/to/project ProjectName -process malware.exe -scriptPath /scripts -postScript FindStrings.py
-```
-This is particularly useful for detecting **T1059.005 Command-Line Interface** or **T1546.008 Event Triggered Execution: Accessibility Features**, where batch processing can flag suspicious strings or hooks.
-
-#### Python API (`currentScript`)
-Access Ghidra’s current script context via `currentScript` to interact with the program database. Example:
-```python
-from ghidra.app.script import GhidraScript
-currentScript = getState().getScript()
-func = currentScript.getFunctionContaining(currentAddress)
-print(f"Function: {func.getName()}")
-```
-Use this to automate **T1574.009 Hijack Execution Flow: Path Interception by PATH Environment Variable** by enumerating imported functions or DLLs.
-
-#### Capa’s `-v` (Verbose) and `-j` (JSON) Flags
-Enhance capa’s output with `-v` for detailed rule matches or `-j` for machine-readable JSON. Example:
-```bash
-capa -v malware.exe  # Verbose output for manual review
-capa -j malware.exe  # JSON for automated parsing
-```
-These flags help identify **T1562.006 Indicator Removal: Timestomp** or **T1070.006 Indicator Removal: File Deletion** by surfacing evasion techniques in structured formats.
-
-**Sources:**
-- [Ghidra Headless Documentation (NSA GitHub)](https://github.com/NationalSecurityAgency/ghidra/blob/master/GhidraDocs/GhidraClass/HeadlessAnalysis.md)
-- [FireEye Capa Rules & Usage](https://github.com/fireeye/capa-rules/blob/master/doc/usage.md)
-
 ### Adversary Emulation & Red-Team Perspective
 
 From an adversary’s perspective, Ghidra scripting is a powerful post-exploitation tool for **automated binary analysis, payload customization, and evasion**. Attackers leverage Ghidra scripts to rapidly identify vulnerable functions (e.g., unsafe deserialization, buffer overflows) or hardcoded credentials in compiled binaries, accelerating **exploitation development** (MITRE ATT&CK [T1588.002: Obtain Capabilities - Exploits](https://attack.mitre.org/techniques/T1588/002/)). For example, a script could parse a target binary to locate cryptographic functions, then dynamically patch them to weaken encryption (e.g., replacing AES with XOR) for **data exfiltration** (MITRE ATT&CK [T1041: Exfiltration Over C2 Channel](https://attack.mitre.org/techniques/T1041/)).

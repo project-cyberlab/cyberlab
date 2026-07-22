@@ -203,73 +203,6 @@ Below are **high-impact commands and features** for `nmap` and `Metasploit` that
   *Use when*: Pivoting or executing post-exploit modules (e.g., `hashdump`).
   **MITRE ATT&CK**:
 
-### Common Pitfalls & Result Validation
-
-Analysts often mistake open ports for exploitable services without verifying the underlying application or patch level. For example, an Nmap version scan might report an outdated OpenSSH, but the actual daemon may be restricted or patched. This can lead to wasted effort attempting T1087 (Account Discovery) via brute-force when the service is actually providing a decoy banner. Similarly, when extracting credentials from memory dumps, analysts may assume captured NTLM hashes are immediately useful, failing to check if the accounts are disabled or the hashes match current password storage (T1555 – Credentials from Password Stores). Always validate findings with a secondary method: use `netcat` or `openssl s_client` to manually inspect banners, or cross-reference service signatures with Shodan or threat intelligence feeds. For credential validation, attempt authentication against a test account using the exact hash format to confirm it is not a stale or deprecated hash. False conclusions also arise when analysts misinterpret tool output—e.g., Metasploit's `smtp_version` auxiliary may report a server as vulnerable to CVE-2020-7247, but a manual probe shows it is patched. Validate every exploitation step by attempting the exploit in a controlled environment and verifying the outcome against the service's actual behavior.
-
-Sources:  
-- CVE Details (CVE-2020-7247): https://www.cve.org/CVERecord?id=CVE-2020-7247  
-- NVD: https://nvd.nist.gov/vuln/detail/CVE-2020-7247
-
-
-### Essential Commands & Features
-
-Beyond basic port scans, nmap’s true power emerges through service/OS detection, aggressive profiling, and scripted probes. These flags are not demonstrated in earlier exercises but are critical for real-world recon.
-
-- **`-sV` (Service Version Detection)**: Identifies exact software versions running on open ports.  
-  `nmap -sV 192.168.1.10`  
-  Use when you need to find vulnerable application versions (e.g., Apache 2.4.49 for CVE-2021-41773).
-
-- **`-O` (OS Detection)**: Attempts to fingerprint the target operating system.  
-  `nmap -O 192.168.1.10`  
-  Leverage during initial discovery to tailor subsequent exploits (maps to MITRE T1082 – System Information Discovery).
-
-- **`-A` (Aggressive Scan)**: Combines `-sV`, `-O`, default NSE scripts, and traceroute.  
-  `nmap -A 192.168.1.10`  
-  Best for rapid, thorough assessment of a single target when stealth is secondary.
-
-- **`--script` (NSE)**: Executes Lua scripts for detection, exploitation, or enumeration.  
-  `nmap --script smb-enum-shares -p 445 192.168.1.10`  
-  Essential for enumerating SMB shares without separate tools (supports MITRE T1018 – Remote System Discovery).
-
-- **`-T4` (Timing Template)**: Sets aggressive timing (between 0-5); `-T4` balances speed and reliability.  
-  `nmap -T4 -sS target`  
-  Use on modern networks with sufficient bandwidth to cut scan time significantly.
-
-- **`-oA <basename>` (All Output Formats)**: Saves results in `.nmap`, `.gnmap`, and `.xml` simultaneously.  
-  `nmap -sV -oA scan_output 192.168.1.0/24`  
-  Critical for reporting, diffing scans, and feeding into automation tools like Metasploit’s db_import.
-
-**MITRE ATT&CK Techniques**: T1082 (System Information Discovery) via OS detection; T1018 (Remote System Discovery) via NSE script enumeration.
-
-**Authoritative References**:  
-- `nmap` manual: https://man7.org/linux/man-pages/man1/nmap.1.html  
-- NSE script documentation: https://nmap.org/nsedoc/
-
-### Threat Hunting & Detection Engineering
-
-In this hands-on segment, you’ll pivot from offensive tradecraft to proactive detection. Focus on **T1021.006 (Remote Services: Windows Remote Management)** and **T1562.001 (Impair Defenses: Disable or Modify Tools)**—two techniques frequently observed in post-exploitation phases.
-
-**Detection Logic:**
-- **Windows Event Logs (Security.evtx):**
-  - Hunt for Event ID **4688** (Process Creation) where `NewProcessName` contains `winrm.vbs` or `wsmprovhost.exe`, paired with `CommandLine` arguments like `-r:<target>` or `-u:<user>`. Correlate with Event ID **4624** (Logon) where `LogonType` is **10** (Remote Interactive) and `AuthenticationPackageName` is **Negotiate**.
-  - For **T1562.001**, monitor Event ID **1102** (Audit Log Cleared) or **5145** (Share Access) where `RelativeTargetName` is `\Windows\System32\winevt\Logs\Security.evtx` and `AccessMask` includes `0x2` (Write).
-
-- **Zeek/Suricata:**
-  - Zeek’s `conn.log`: Filter for `service == "winrm"` and `duration > 5m` (unusually long sessions). Pivot to `dce_rpc.log` for `operation` values like `IWbemServices::ExecMethod` (WMI lateral movement).
-  - Suricata: Detect `ET POLICY WinRM Access` (SID 2027861) or `ET SCAN Potential WinRM Brute Force` (SID 2027862). Hunt for `http.method == "POST"` to `/wsman` with `http.user_agent` containing `Microsoft WinRM Client`.
-
-**Threat-Hunting Pivots:**
-- Cross-reference `winrm.vbs` executions with **Sysmon Event ID 3** (Network Connection) where `DestinationPort` is **5985/5986** (HTTP/HTTPS WinRM).
-- For **T1562.001**, check `reg.exe` modifications to `HKLM\SOFTWARE\Policies\Microsoft\Windows\EventLog\` (Event ID **4657**).
-
-**Sources:**
-- [CISA Alert AA22-257A: Threat Hunting for WinRM Abuse](https://www.cisa.gov/uscert/ncas/alerts/aa22-257a)
-- [Elastic Security Labs: Detecting Disabling of Security Tools](https://www.
-
-
-### Essential Commands & Features
-
 #### **Nmap: Advanced Scanning Techniques**
 Beyond basic port scanning, Nmap offers powerful features for service enumeration, OS detection, and scriptable interactions. These commands are critical for **reconnaissance (T1592.004 - Gather Victim Host Information)** and **active scanning (T1595 - Active Scanning)**:
 
@@ -325,6 +258,37 @@ Metasploit’s modular framework streamlines exploitation. Key commands for **ex
 - [Nmap Official Documentation: NSE Scripts](https://nmap.org/book/nse.html)
 - [Offensive Security: Metasploit Unleashed](https://www.offensive-security.com/metasploit-unleashed/)
 
+### Common Pitfalls & Result Validation
+
+Analysts often mistake open ports for exploitable services without verifying the underlying application or patch level. For example, an Nmap version scan might report an outdated OpenSSH, but the actual daemon may be restricted or patched. This can lead to wasted effort attempting T1087 (Account Discovery) via brute-force when the service is actually providing a decoy banner. Similarly, when extracting credentials from memory dumps, analysts may assume captured NTLM hashes are immediately useful, failing to check if the accounts are disabled or the hashes match current password storage (T1555 – Credentials from Password Stores). Always validate findings with a secondary method: use `netcat` or `openssl s_client` to manually inspect banners, or cross-reference service signatures with Shodan or threat intelligence feeds. For credential validation, attempt authentication against a test account using the exact hash format to confirm it is not a stale or deprecated hash. False conclusions also arise when analysts misinterpret tool output—e.g., Metasploit's `smtp_version` auxiliary may report a server as vulnerable to CVE-2020-7247, but a manual probe shows it is patched. Validate every exploitation step by attempting the exploit in a controlled environment and verifying the outcome against the service's actual behavior.
+
+Sources:  
+- CVE Details (CVE-2020-7247): https://www.cve.org/CVERecord?id=CVE-2020-7247  
+- NVD: https://nvd.nist.gov/vuln/detail/CVE-2020-7247
+
+
+### Threat Hunting & Detection Engineering
+
+In this hands-on segment, you’ll pivot from offensive tradecraft to proactive detection. Focus on **T1021.006 (Remote Services: Windows Remote Management)** and **T1562.001 (Impair Defenses: Disable or Modify Tools)**—two techniques frequently observed in post-exploitation phases.
+
+**Detection Logic:**
+- **Windows Event Logs (Security.evtx):**
+  - Hunt for Event ID **4688** (Process Creation) where `NewProcessName` contains `winrm.vbs` or `wsmprovhost.exe`, paired with `CommandLine` arguments like `-r:<target>` or `-u:<user>`. Correlate with Event ID **4624** (Logon) where `LogonType` is **10** (Remote Interactive) and `AuthenticationPackageName` is **Negotiate**.
+  - For **T1562.001**, monitor Event ID **1102** (Audit Log Cleared) or **5145** (Share Access) where `RelativeTargetName` is `\Windows\System32\winevt\Logs\Security.evtx` and `AccessMask` includes `0x2` (Write).
+
+- **Zeek/Suricata:**
+  - Zeek’s `conn.log`: Filter for `service == "winrm"` and `duration > 5m` (unusually long sessions). Pivot to `dce_rpc.log` for `operation` values like `IWbemServices::ExecMethod` (WMI lateral movement).
+  - Suricata: Detect `ET POLICY WinRM Access` (SID 2027861) or `ET SCAN Potential WinRM Brute Force` (SID 2027862). Hunt for `http.method == "POST"` to `/wsman` with `http.user_agent` containing `Microsoft WinRM Client`.
+
+**Threat-Hunting Pivots:**
+- Cross-reference `winrm.vbs` executions with **Sysmon Event ID 3** (Network Connection) where `DestinationPort` is **5985/5986** (HTTP/HTTPS WinRM).
+- For **T1562.001**, check `reg.exe` modifications to `HKLM\SOFTWARE\Policies\Microsoft\Windows\EventLog\` (Event ID **4657**).
+
+**Sources:**
+- [CISA Alert AA22-257A: Threat Hunting for WinRM Abuse](https://www.cisa.gov/uscert/ncas/alerts/aa22-257a)
+- [Elastic Security Labs: Detecting Disabling of Security Tools](https://www.
+
+
 ### Adversary Emulation & Red-Team Perspective
 
 From a red-team perspective, Kali Linux’s offensive tooling enables adversary emulation by replicating real-world attack chains. For example, an attacker may abuse **Kerberoasting (T1558.003)** to extract service account credentials by requesting Kerberos ticket-granting service (TGS) tickets and cracking them offline using Hashcat. This leaves artifacts such as Event ID 4769 (Kerberos service ticket requests) in Windows logs, with high-volume requests for RC4-HMAC encryption—a red flag for defenders.
@@ -340,9 +304,6 @@ Defenders should monitor for unusual TGS requests, unexpected child processes of
 - [MITRE ATT&CK: Kerberoasting (T1558.003)](https://attack.mitre.org/techniques/T1558/003/)
 - [SpecterOps: Kerberoasting in Practice](https://posts.specterops.io/kerberoasting-revisited-d434351bd4d1)
 
-
-### Essential Commands & Features
-To further enhance your Kali Linux skills, it's crucial to master essential commands and features of core tools like nmap. The `-sV` flag is used for service version detection, which can help identify potential vulnerabilities, as seen in the technique [T1588](https://attack.mitre.org/techniques/T1588/) "Obtain Capabilities" and [T1591](https://attack.mitre.org/techniques/T1591/) "Collect Domain Information". For example, `nmap -sV 192.168.1.1` scans for open ports and identifies the service version running on them. OS detection can be performed using the `-O` flag, as in `nmap -O 192.168.1.1`, which attempts to guess the operating system of the target. The `-A` flag enables aggressive scanning, combining `-sV`, `-O`, and other options for a comprehensive scan: `nmap -A 192.168.1.1`. For more advanced scanning, the `--script` option can be used with NSE scripts, such as `nmap --script=vuln 192.168.1.1`. Adjusting the timing of scans can be done with the `-T4` flag for faster execution: `nmap -T4 192.168.1.1`. Understanding these features can significantly improve your scanning capabilities. For more detailed information, visit the official [nmap documentation](https://nmap.org/book/man.html) or [Cybersecurity and Infrastructure Security Agency (CISA)](https://www.cisa.gov/) resources.
 
 ### Detection Signatures & Reference Artifacts
 

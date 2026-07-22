@@ -186,14 +186,6 @@ vshadowmount -o /mnt/vss -X C:\vssadmin_list_shadows.txt
 - [libesedb Documentation (GitLab)](https://github.com/libyal/libesedb/wiki/Command-line-tools)
 - [Forensic Focus: Volume Shadow Copy Analysis](https://www.forensicfocus.com/articles/volume-shadow-copy-forensics/)
 
-### Threat Hunting & Detection Engineering
-To detect malicious activity related to Windows artifact libraries, threat hunters can focus on techniques such as [T1204](https://attack.mitre.org/techniques/T1204) - User Execution, where an adversary may execute malicious code or scripts, and [T1218](https://attack.mitre.org/techniques/T1218) - Signed Binary Proxy Execution, which involves using signed Windows binaries to execute malicious code. Detection logic can be based on Windows Event IDs such as 4688 (Process Creation) and 4703 (Token Elevation Type), where the `CommandLine` field may indicate suspicious script execution or binary usage. Additionally, analyzing Zeek logs for unusual DNS queries or HTTP requests can help identify potential malicious activity. Threat hunters can pivot on fields such as `Image` (executable name) and `CommandLine` to investigate further. For more information on threat hunting and detection engineering, visit the [Cyber and Infrastructure Security Agency (CISA)](https://www.cisa.gov/) website or the [National Institute of Standards and Technology (NIST)](https://www.nist.gov/) Cybersecurity Framework page.
-
-
-### Essential Commands & Features
-
-Below are critical but often overlooked commands and features for extracting structured forensic artifacts from Windows systems using the `libyal` tool suite. These examples address gaps in typical workflows, such as exporting EVTX logs in machine-readable formats, extracting ESEDB metadata, and uncovering hidden items in PFF files.
-
 #### **1. `evtxexport -f xml` – Structured EVTX Output**
 Use this to export Windows Event Logs (EVTX) in XML format for parsing with tools like `jq` or SIEM ingestion. This is invaluable for detecting **T1059.003 (Command-Line Interface)** or **T1562.001 (Disable or Modify Tools)** via PowerShell or security tool tampering.
 ```bash
@@ -216,56 +208,13 @@ pffexport --include-all mailbox.pst
 - [Libyal Tools Documentation (evtxexport/esedbexport/pffexport)](https://github.com/libyal)
 - [DFIR Review: ESEDB Forensics](https://www.dfir.review/)
 
+### Threat Hunting & Detection Engineering
+To detect malicious activity related to Windows artifact libraries, threat hunters can focus on techniques such as [T1204](https://attack.mitre.org/techniques/T1204) - User Execution, where an adversary may execute malicious code or scripts, and [T1218](https://attack.mitre.org/techniques/T1218) - Signed Binary Proxy Execution, which involves using signed Windows binaries to execute malicious code. Detection logic can be based on Windows Event IDs such as 4688 (Process Creation) and 4703 (Token Elevation Type), where the `CommandLine` field may indicate suspicious script execution or binary usage. Additionally, analyzing Zeek logs for unusual DNS queries or HTTP requests can help identify potential malicious activity. Threat hunters can pivot on fields such as `Image` (executable name) and `CommandLine` to investigate further. For more information on threat hunting and detection engineering, visit the [Cyber and Infrastructure Security Agency (CISA)](https://www.cisa.gov/) website or the [National Institute of Standards and Technology (NIST)](https://www.nist.gov/) Cybersecurity Framework page.
+
+
 ### Adversary Emulation & Red-Team Perspective
 Adversaries may leverage Windows artifact libraries to evade detection and persist on a compromised system. For instance, an attacker may utilize the `T1587: Modify Existing Service` technique to manipulate existing services and blend in with legitimate system activity, making it challenging for defenders to detect malicious behavior. Additionally, attackers may employ the `T1595: Active Scanning` technique to gather information about the system and its connected devices, which can help them identify potential vulnerabilities to exploit. When abusing Windows artifact libraries, attackers may leave behind artifacts such as modified registry keys, suspicious service configurations, or unusual network activity. To evade detection, attackers may use code obfuscation, encryption, or anti-forensic techniques to conceal their malicious activities. Understanding these tactics, techniques, and procedures (TTPs) is crucial for effective threat hunting and incident response. For more information on adversary emulation and red-team operations, visit the Cyber and Infrastructure Security Agency (CISA) website at [https://www.cisa.gov](https://www.cisa.gov) or the National Institute of Standards and Technology (NIST) Computer Security Resource Center at [https://csrc.nist.gov](https://csrc.nist.gov).
 
-
-### Essential Commands & Features
-
-Below are **critical but undemonstrated** commands, flags, and features for the core tools in this module, each with a runnable example and tactical use case.
-
----
-
-1. **`evtxexport -f json`** (Evidence Export)
-   Convert Windows Event Logs (`.evtx`) to JSON for timeline analysis or ingestion into SIEMs.
-   ```bash
-   evtxexport -f json Security.evtx > security_events.json
-   ```
-   *Use when:* Parsing logs for **T1059.001 (PowerShell)** or **T1546.008 (Event Triggered Execution: Accessibility Features)** to detect script-based execution or privilege escalation.
-
-2. **`esedbexport -m tables`** (ESE Database Export)
-   Extract all tables from Extensible Storage Engine (ESE) databases (e.g., `WebCacheV01.dat`) with metadata.
-   ```bash
-   esedbexport -m tables WebCacheV01.dat
-   ```
-   *Use when:* Investigating **T1555.003 (Credentials from Web Browsers)** to recover browser artifacts like cookies or history.
-
-3. **`pffexport --include-all-attached`** (PST/OST Export)
-   Recursively extract all nested attachments from Outlook data files (`.pst`, `.ost`).
-   ```bash
-   pffexport --include-all-attached mailbox.pst
-   ```
-   *Use when:* Hunting for **T1566.002 (Phishing: Spearphishing Link)** or embedded malware in email attachments.
-
-4. **`vshadowmount`** (Volume Shadow Copy Mount)
-   Mount Volume Shadow Copies (VSCs) as read-only filesystems for artifact recovery.
-   ```bash
-   vshadowmount C:\vss C:\mount_point
-   ```
-   *Use when:* Recovering files deleted via **T1070.004 (Indicator Removal: File Deletion)** or analyzing historical registry hives.
-
-5. **`bdemount`** (BitLocker Drive Encryption)
-   Decrypt and mount BitLocker-encrypted volumes using a recovery key.
-   ```bash
-   bdemount -r <recovery_key> encrypted_volume.bde /mnt/bitlocker
-   ```
-   *Use when:* Accessing encrypted drives during **T1486 (Data Encrypted for Impact)** investigations.
-
----
-
-**Sources:**
-- [Libyal Project Documentation (evtxexport/esedbexport)](https://github.com/libyal/libevtx/wiki)
-- [SANS Digital Forensics Blog: PFF Tools](https://www.sans.org/blog/digital-forensics-pff-tools/)
 
 ### Common Pitfalls & Result Validation
 

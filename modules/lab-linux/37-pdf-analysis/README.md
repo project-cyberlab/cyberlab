@@ -184,41 +184,6 @@ The following commands and flags expand your analysis capabilities with `pdfid` 
 To detect and hunt threats related to PDF analysis, focus on techniques such as [T1588: Obtain Capabilities](https://attack.mitre.org/techniques/T1588/) and [T1590: Gather Technical Data](https://attack.mitre.org/techniques/T1590/), which involve adversaries gathering information about the target environment and its capabilities. Analyze Windows Event IDs related to process creation (ID 4688) and command-line arguments to identify suspicious activity. In network logs, inspect Zeek's `http` log for unusual User-Agent headers or Suricata's `http` events for malicious PDF downloads. Threat hunters can pivot on PDF metadata, such as creator or author fields, to identify potentially malicious documents. Additionally, monitor system calls related to PDF parsing libraries to detect exploitation attempts. For more information on threat hunting and detection engineering, visit the [Cyber and Infrastructure Security Agency (CISA)](https://www.cisa.gov/) and [National Institute of Standards and Technology (NIST)](https://www.nist.gov/) websites for guidance on detecting and responding to cyber threats.
 
 
-### Essential Commands & Features
-
-Many analysts rely on default `pdf-parser` and `pdfid` output, but advanced flags unlock deeper forensic visibility.
-
-**pdf-parser Flags Not Yet Demonstrated**
-
-- **`-s` (search)** – Scans for a specific string inside any object (e.g., `/JavaScript`).  
-  `python pdf-parser.py -s /JavaScript suspect.pdf`  
-  *Use when hunting for script injection without reviewing every object.*
-
-- **`-f` (filter decode)** – After an object, attempts to decompress or decode filters (e.g., FlateDecode, ASCIIHexDecode).  
-  `python pdf-parser.py -f -o 7 suspect.pdf`  
-  *Essential for extracting the raw payload from compressed streams.*
-
-- **`-o` (object ID)** – Shows only the specified object number.  
-  `python pdf-parser.py -o 3 suspect.pdf`  
-  *Drill into a single suspicious object quickly, especially when `pdfid` flags an object count mismatch.*
-
-- **`-d` (dump)** – Extracts the raw, unfiltered content of a stream to stdout.  
-  `python pdf-parser.py -d -o 5 suspect.pdf > stream5.bin`  
-  *Best for saving binary artifacts (e.g., an embedded EXE) for offline analysis.*
-
-**pdfid Flag Not Yet Demonstrated**
-
-- **`-n` (no stats)** – Suppresses the statistical summary line, outputting only indicator rows (e.g., `/JavaScript`, `/OpenAction`).  
-  `python pdfid.py -n suspect.pdf`  
-  *Ideal for scripting: pipe results into `grep` to flag malicious indicators without noise.*
-
-These commands directly support detecting **MITRE ATT&CK T1059.003 (Windows Command Shell)** and **T1566.003 (Spearphishing via Service)**, both commonly delivered through malicious PDFs that invoke cmd.exe or point to external URLs.
-
-**Authoritative References**
-
-- Didier Stevens, pdf-parser documentation and examples: https://blog.didierstevens.com/programs/pdf-tools/
-- CISA, "Analyzing Malicious PDF Files": https://www.cisa.gov/news-events/alerts/2020/09/24/analyzing-malicious-pdf-files
-
 ### Adversary Emulation & Red-Team Perspective
 
 From a red-team perspective, PDF analysis is critical for crafting stealthy payloads and evading detection. Attackers frequently abuse PDFs to deliver malicious content via **phishing (T1566.001: Spearphishing Attachment)** or **drive-by compromise (T1566.003: Spearphishing via Service)**, embedding malicious JavaScript, exploits (e.g., CVE-2023-21608), or embedded executables. Common **Tactics, Techniques, and Procedures (TTPs)** include:
@@ -240,13 +205,6 @@ For further reading:
 - [CERT-EU: PDF Analysis for Malware Detection](https://cert.europa.eu/static/WhitePapers/CERT-EU-SWP_17_001_pdf_v1_1.pdf)
 - [FireEye: PDF Exploits and Evasion Techniques](https://www.fireeye.com/blog/threat-research/2020/04/pdfs-weaponized.html)
 
-
-### Essential Commands & Features
-
-Beyond basic pdf-parser usage, five critical flags unlock deeper forensic analysis. Use `-f "/Filter"` to isolate objects using a specific compression or encoding filter (e.g., `/FlateDecode`, `/ASCIIHexDecode`) — essential for finding obfuscated or malicious payloads hidden in streams. Example: `pdf-parser -f "/FlateDecode" suspect.pdf`. Employ `-w` to display stream content in its raw, decompressed form without hex escaping, enabling direct inspection of embedded scripts or shellcode: `pdf-parser -w suspect.pdf`. The `-a` flag prints a statistical summary of object types (stream, dictionary, array) within the file, giving a quick overview of complexity: `pdf-parser -a suspect.pdf`. Redirect full analysis to a text file for later review using `-O output.txt`: `pdf-parser -O analysis.txt suspect.pdf`. Finally, `-d object_id` dumps the raw bytes of a specific object (by its internal ID) to stdout, perfect for carving out an embedded executable or JavaScript fragment: `pdf-parser -d 5 -w suspect.pdf | strings`. These flags directly support detection of techniques like **T1203 (Exploitation for Client Execution)** — common in PDF-driven attacks — and **T1071.001 (Web Protocols)**, seen when PDF actions initiate outbound connections to exfiltrate data.
-
-For official documentation: [Didier Stevens pdf-parser page](https://blog.didierstevens.com/programs/pdf-tools/)  
-For practical workflows: [REMnux PDF Analysis Guide](https://docs.remnux.org/analyze-malicious-documents/analyze-pdf-files)
 
 ### Detection Signatures & Reference Artifacts
 
@@ -319,16 +277,6 @@ rule MAL_Chrysalis_DllLoader_Feb26 {
 | sample sha256 | `c37bae0b9ffa4e0fb5f5040340d209345ee32b403f1f2dc4c4910d9f6e065403` |
 | reproduce sample | a text file containing exactly: 'cyberlab benign training sample -- module 37-pdf-analysis -- for detection-rule testing only
 ' |
-### Essential Commands & Features
-
-Beyond the basic operations, `pdf-parser` offers advanced flags for deep inspection. Use **`-f`** to display cross-references (xref table) for mapping object relationships; e.g., `pdf-parser -f suspicious.pdf` reveals references critical for detecting obfuscated objects. The **`-w`** flag triggers raw stream decompression without formatting, ideal for extracting embedded scripts: `pdf-parser -w -o 5 document.pdf` outputs unformatted stream content for object 5. Flag **`-c`** lists only compressed objects, highlighting potential packed payloads: `pdf-parser -c file.pdf`. Use **`-e`** to extract selected objects to separate files, essential for isolating suspicious streams: `pdf-parser -e -o 3 -d extracted.bin sample.pdf`. The **`-r`** flag recursively parses objects, following all references to reveal hidden chains: `pdf-parser -r report.pdf`.  
-
-For `pdfid`, the **`-s`** flag enables custom keyword scanning to hunt for specific indicators. For example, `pdfid -s "/Launch" suspect.pdf` identifies Launch actions often used in exploits. Add **`-j`** for JSON output, enabling automated analysis: `pdfid -s "/JS" -j invoice.pdf` returns structured results highlighting JavaScript injections.  
-
-These techniques directly uncover indicators of techniques such as **T1204.001** (User Execution: Malicious Link) and **T1059.001** (Command and Scripting Interpreter: PowerShell), where PDFs deliver links to PowerShell download cradles.  
-
-**Authoritative Resources:** [SANS DFIR PDF Analysis Poster](https://www.sans.org/posters/dfir-pdf-analysis-poster/) and [Remnux pdf-parser Documentation](https://docs.remnux.org/tools/analyze-pdfs/pdf-parser).
-
 ### Common Pitfalls & Result Validation
 
 When analyzing PDFs, analysts often misinterpret tool outputs or overlook critical indicators, leading to false negatives or positives. A frequent mistake is **assuming all JavaScript in a PDF is malicious**—legitimate PDFs (e.g., forms) may use benign scripts. Conversely, analysts may **dismiss obfuscated code** (e.g., hex-encoded strings) as "noise" without deeper inspection, missing embedded payloads. Another pitfall is **ignoring structural anomalies**, such as mismatched object references or unexpected streams, which may indicate tampering (e.g., [T1036.005: Match Legitimate Name or Location](https://attack.mitre.org/techniques/T1036/005/)).

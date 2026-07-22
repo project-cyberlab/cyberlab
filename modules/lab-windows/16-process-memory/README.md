@@ -131,23 +131,6 @@ Expected: `Get-FileHash` returns `4B8D9F2A6C1E0D7B3F5A29C8E14D6072B9A0C3F18E5D47
 ### Essential Commands & Features
 To further leverage the capabilities of pe-sieve in process memory analysis, the `--dump-memory` option is crucial. This feature allows for the dumping of memory sections of a process, which can be particularly useful in detecting and analyzing malware that resides in memory, such as those using the techniques associated with [T1496, "Resource Hijacking"](https://attack.mitre.org/techniques/T1496) and [T1215, "Credentials from Password Stores"](https://attack.mitre.org/techniques/T1215). For instance, to dump the memory of a process with the ID 1234, you can use the command `pe-sieve.exe --dump-memory -p 1234`. This command is especially useful when trying to analyze malware that uses anti-debugging techniques or code obfuscation, making traditional analysis methods less effective. By analyzing the dumped memory, security professionals can gain insights into the malware's behavior and potentially uncover hidden malicious activities. For more detailed information on using pe-sieve and its options, including the `--dump-memory` feature, refer to the official documentation at https://github.com/pe-sieve/Pe-Sieve and https://www.cyberbit.com/blog/posts/dumping-process-memory-for-malware-analysis/.
 
-### Common Pitfalls & Result Validation
-
-When analyzing process memory, analysts often fall into traps that lead to false positives or missed detections. A frequent mistake is **assuming all injected memory regions are malicious**—legitimate applications (e.g., debuggers, AV tools) may allocate executable memory (e.g., `PAGE_EXECUTE_READWRITE`). Always cross-reference memory regions with known benign processes and validate permissions against expected behavior. Another pitfall is **ignoring memory alignment tricks** (e.g., `T1055.013: Process Injection: Process Hollowing`), where attackers unmap legitimate code before injecting payloads. Use tools like Volatility’s `ldrmodules` or `malfind` to detect discrepancies between mapped files and in-memory sections.
-
-To validate findings, **correlate memory artifacts with behavioral indicators**. For example, if you suspect `T1601.001: Modify System Image: Patch System Image`, check for unsigned code in memory against known system binaries (e.g., `lsass.exe`). Additionally, **avoid relying solely on entropy**—while high entropy may indicate packed code (e.g., `T1027.009: Obfuscated Files or Information: Embedded Payloads`), some legitimate libraries (e.g., cryptographic modules) also exhibit this trait. Instead, combine entropy analysis with YARA rules or API call monitoring.
-
-**False conclusions often stem from incomplete context**. Always document the process tree, loaded modules, and network connections (e.g., via `T1041: Exfiltration Over C2 Channel`) to distinguish malicious activity from benign anomalies.
-
-**Sources**:
-- [CERT-EU: Memory Forensics Pitfalls](https://cert.europa.eu/static/WhitePapers/CERT-EU-SWP_17-002_Memory_Forensics.pdf)
-- [FireEye: Detecting Process Injection Techniques](https://www.fireeye.com/blog/threat-research/2017/05/fin7-shim-databases-persistence.html)
-
-
-### Essential Commands & Features
-
-Below are **critical but undemonstrated** commands, flags, and features for `pe-sieve` and `HollowsHunter` that enable deeper process-memory analysis and automation. Use these to refine detection, reduce noise, and integrate findings into broader workflows.
-
 #### **pe-sieve: Advanced Dumping & Output Control**
 - **`--dump-mode`**: Controls how detected artifacts are dumped. Use `2` (default) to dump full regions, or `1` to dump only modified pages (useful for minimizing output size when analyzing **Process Hollowing (T1055.012)** or **Process Injection (T1055)**).
   ```cmd
@@ -180,6 +163,19 @@ Below are **critical but undemonstrated** commands, flags, and features for `pe-
 - [PE-sieve/HollowsHunter GitHub Wiki (Advanced Usage)](https://github.com/hasherezade/pe-sieve/wiki/Advanced-usage)
 - [CERT-EU: Memory Forensics with PE-sieve (Technical Report)](https://cert.europa.eu/static/WhitePapers/CERT-EU-SWP_17_001_Memory_Forensics.pdf)
 
+### Common Pitfalls & Result Validation
+
+When analyzing process memory, analysts often fall into traps that lead to false positives or missed detections. A frequent mistake is **assuming all injected memory regions are malicious**—legitimate applications (e.g., debuggers, AV tools) may allocate executable memory (e.g., `PAGE_EXECUTE_READWRITE`). Always cross-reference memory regions with known benign processes and validate permissions against expected behavior. Another pitfall is **ignoring memory alignment tricks** (e.g., `T1055.013: Process Injection: Process Hollowing`), where attackers unmap legitimate code before injecting payloads. Use tools like Volatility’s `ldrmodules` or `malfind` to detect discrepancies between mapped files and in-memory sections.
+
+To validate findings, **correlate memory artifacts with behavioral indicators**. For example, if you suspect `T1601.001: Modify System Image: Patch System Image`, check for unsigned code in memory against known system binaries (e.g., `lsass.exe`). Additionally, **avoid relying solely on entropy**—while high entropy may indicate packed code (e.g., `T1027.009: Obfuscated Files or Information: Embedded Payloads`), some legitimate libraries (e.g., cryptographic modules) also exhibit this trait. Instead, combine entropy analysis with YARA rules or API call monitoring.
+
+**False conclusions often stem from incomplete context**. Always document the process tree, loaded modules, and network connections (e.g., via `T1041: Exfiltration Over C2 Channel`) to distinguish malicious activity from benign anomalies.
+
+**Sources**:
+- [CERT-EU: Memory Forensics Pitfalls](https://cert.europa.eu/static/WhitePapers/CERT-EU-SWP_17-002_Memory_Forensics.pdf)
+- [FireEye: Detecting Process Injection Techniques](https://www.fireeye.com/blog/threat-research/2017/05/fin7-shim-databases-persistence.html)
+
+
 ### Threat Hunting & Detection Engineering
 
 Hunt for **process hollowing** (MITRE ATT&CK [T1055.012: Process Hollowing](https://attack.mitre.org/techniques/T1055/012/)) by correlating **Windows Event ID 4688** (Process Creation) with **Sysmon Event ID 10** (Process Access). Focus on `GrantedAccess` values `0x1FFFFF` (full access) or `0x1F3FFF` (suspicious rights), targeting `TargetImage` paths like `svchost.exe` or `explorer.exe` spawned by unusual parents (e.g., `powershell.exe`). Pivot on `SourceImage` hashes not seen in the past 30 days or lacking valid signatures (use `Authenticode` fields in Sysmon).
@@ -190,27 +186,6 @@ For **reflective code loading** (MITRE ATT&CK [T1574.009: Reflective Code Loadin
 - [CISA Alert (AA22-152A) on Process Injection](https://www.cisa.gov/uscert/ncas/alerts/aa22-152a)
 - [Elastic Security Labs: Detecting Process Hollowing](https://www.elastic.co/security-labs/detecting-process-hollowing-with-elastic-security)
 
-
-### Essential Commands & Features
-
-Beyond the basic scanning and dumping demonstrated earlier, `pe-sieve` includes three flags critical for automation, analysis, and integration.  
-- **`--json`** – Outputs results as structured JSON. Ideal for feeding into log shippers or orchestration tools.  
-  *Example:* `pe-sieve /pid 1234 --json` (redirect output to a parser).  
-  *When:* You want to automatically flag suspicious modules via SIEM rules.  
-
-- **`--diff`** – Compares two process memory dumps to highlight changes (e.g., after an infection becomes active). Accepts two dump file paths.  
-  *Example:* `pe-sieve --diff dump_before.bin dump_after.bin`  
-  *When:* Investigating process anomalies that occur over time (e.g., post-execution shellcode injection).  
-
-- **`--quiet`** – Suppresses banner and progress lines; only prints results (exit code + JSON/stats). Essential for scripted workflows.  
-  *Example:* `pe-sieve /pid 5678 --quiet --json`  
-  *When:* Running from a SOAR playbook where clean output and exit codes are required.  
-
-These flags map to two MITRE ATT&CK techniques **not** covered earlier:  
-- **[T1003](https://attack.mitre.org/techniques/T1003) OS Credential Dumping** – `pe-sieve` uncovers injected code that has dumped `lsass` process memory.  
-- **[T1059](https://attack.mitre.org/techniques/T1059) Command and Scripting Interpreter** – Injected shellcode often launches `cmd.exe` or PowerShell; `--diff` reveals such new executable regions.  
-
-For more details, see the official `pe-sieve` documentation: [hshrzd.github.io/pe-sieve](https://hshrzd.github.io/pe-sieve/). For an integration walkthrough with process injection detection, refer to the Varonis blog on advanced memory forensics: [www.varonis.com/blog/process-injection-detection](https://www.varonis.com/blog/process-injection-detection).
 
 ### Adversary Emulation & Red-Team Perspective
 
@@ -235,26 +210,6 @@ From an adversary’s perspective, process memory is a goldmine for credential t
 - [CrowdStrike: Process Injection Techniques](https://www.crowdstrike.com/blog/process-injection-techniques/)
 - [NCC Group: Memory Forensics for Incident Response](https://research.nccgroup.com/2021/01/28/memory-forensics-for-incident-response/)
 
-
-### Essential Commands & Features
-
-Beyond the basics, `pe-sieve` and `HollowsHunter` offer powerful flags that streamline detection and forensics. Use `pe-sieve --dump-mode shellcode` to extract only shellcode payloads from injected memory, ideal when suspecting reflective DLL or shellcode injection (covers T1564.001 **Hide Artifacts: Hidden Files and Directories** by recovering shellcode hidden in unbacked regions). Example:
-```bash
-pe-sieve /pid 1234 --dump-mode shellcode --json output.json --quiet
-```
-The `--json` flag produces structured output for SIEM integration, while `--quiet` suppresses console noise for automated runs.
-
-For `HollowsHunter`, enable `--unique_dir` to save each scan dump into a timestamped subdirectory, preventing overwrites during concurrent investigations. The `--loop` flag continuously monitors a process (e.g., every 30 seconds) to capture memory changes—critical for detecting post-exploitation activity like T1070.004 **Indicator Removal on Host: File Deletion** when an attacker cleans artifacts. Example:
-```bash
-HollowsHunter /pid 5678 --unique_dir --loop --json_output results.json
-```
-`--json_output` generates machine‑parseable evidence for automated analysis.
-
-These flags extend detection to lateral movement and defense evasion scenarios not covered by earlier commands.
-
-**References**  
-- MITRE ATT&CK: [Hide Artifacts: Hidden Files and Directories](https://attack.mitre.org/techniques/T1564/001/)  
-- PE‑sieve docs: [GitHub – pe‑sieve README](https://github.com/hasherezade/pe-sieve)
 
 ### Detection Signatures & Reference Artifacts
 

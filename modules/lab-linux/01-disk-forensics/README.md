@@ -217,6 +217,14 @@ sigfind -b 512 504B unallocated.raw
 - Sleuth Kit Man Pages: [https://www.sleuthkit.org/sleuthkit/man/](https://www.sleuthkit.org/sleuthkit/man/)
 - DFIR Review (Peer-Reviewed): [https://www.dfir
 
+#### **1. `blkcalc` – Map Block Addresses to Files**
+Recover file metadata from unallocated blocks by mapping a block address (e.g., from `blkls`) back to its original file.
+**Example:**
+```bash
+blkcalc -d disk.img -u 1024
+```
+**When to use:** After identifying suspicious blocks with `blkls`, determine which file(s) they belonged to (e.g., for **T1074.001 Data Staged** or **T1564.004 NTFS File Attributes**).
+
 ### Common Pitfalls & Result Validation
 
 Common pitfalls in disk forensics stem from over-relying on a single tool or default settings. Analysts often assume that deleted files are always recoverable, ignoring file slack and MFT record overwrites. Timestamps are frequently misinterpreted as absolute creation times, while they can be modified or inaccurately reported by tools. Another mistake is treating a clean `$LogFile` or event log as evidence of benign activity—attackers systematically clear logs using **T1070.001 (Indicator Removal on Host: Clear Windows Event Logs)**, which may leave behind residual entries in `Security.evtx` or $MFT. Similarly, adversaries hide malicious accounts by modifying registry values to prevent them from appearing in standard user enumeration; this is captured by **T1564.002 (Hide Artifacts: Hidden Users)**.
@@ -229,38 +237,6 @@ False conclusions are avoided by never extrapolating intent from incomplete evid
 - [CISA - Event Log Clearing and Anti‑Forensic Techniques (Technical Guidance)](https://www.cisa.gov/uscert/ncas/tips/ST04-003)
 - [NIST SP 800-86: Guide to Integrating Forensic Techniques into Incident Response](https://www.nist.gov/publications/guide-integrating-forensic-techniques-incident-response)
 
-
-### Essential Commands & Features
-
-Block-level analysis and signature-based recovery are critical for uncovering hidden or deleted artifacts. Below are **essential Sleuth Kit commands** not yet demonstrated, with concrete examples and use cases:
-
-#### **1. `blkcalc` – Map Block Addresses to Files**
-Recover file metadata from unallocated blocks by mapping a block address (e.g., from `blkls`) back to its original file.
-**Example:**
-```bash
-blkcalc -d disk.img -u 1024
-```
-**When to use:** After identifying suspicious blocks with `blkls`, determine which file(s) they belonged to (e.g., for **T1074.001 Data Staged** or **T1564.004 NTFS File Attributes**).
-
-#### **2. `blkls` – Extract Unallocated Blocks**
-Dump unallocated or slack space from a disk/image for deeper analysis.
-**Example:**
-```bash
-blkls -A disk.img > unallocated_blocks.raw
-```
-**When to use:** Analyze unallocated space for remnants of deleted files (e.g., **T1485 Data Destruction** or **T1070.004 File Deletion**).
-
-#### **3. `sigfind` – Locate File Signatures**
-Scan raw data for file headers/footers (e.g., `PK` for ZIP, `FFD8` for JPEG) to recover fragmented or hidden files.
-**Example:**
-```bash
-sigfind -b 512 -t jpeg disk.img
-```
-**When to use:** Recover obfuscated files (e.g., **T1140 Deobfuscate/Decode Files or Information** or **T1027.001 Binary Padding**).
-
-**Authoritative Sources:**
-- [Sleuth Kit Man Pages (blkcalc, blkls, sigfind)](https://www.sleuthkit.org/sleuthkit/man/)
-- [DFIR Review: Sleuth Kit for Block-Level Analysis](https://www.dfir.review/)
 
 ### Threat Hunting & Detection Engineering
 

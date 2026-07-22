@@ -220,6 +220,88 @@ Interceptor.attach(ObjC.classes[className][method].implementation, {
 - [Frida Stalker Docs](https://frida.re/docs/stalker/)
 - [MITRE ATT&CK T1622](https://attack.mitre.org/techniques/T1622/)
 
+#### **1. Memory Scanning & Manipulation (`Memory.scan` / `Memory.write`)**
+Use `Memory.scan` to locate specific byte patterns in process memory (e.g., hardcoded keys or strings) and `Memory.write` to overwrite them. This is invaluable for **T1553.004 (Install Root Certificate)** or **T1600.002 (Disable or Modify System Firewall)** by altering runtime configurations.
+
+```javascript
+// Scan for a hardcoded AES key (16 bytes) and replace it
+const keyPtr = Memory.scan(ptr("0x100000000"), 0x1000000, "A9 4A 2B 5C ...", {
+  onMatch: function(address, size) {
+    console.log(`Found key at: ${address}`);
+    Memory.writeByteArray(address, [0x00, 0x01, 0x02, ...]); // Overwrite
+    return 'stop'; // Halt after first match
+  }
+});
+```
+
+#### **2. NativePointer Arithmetic (`NativePointer.add` / `NativePointer.sub`)**
+Use `NativePointer` to perform pointer arithmetic, essential for navigating structures (e.g., C++ vtables) or calculating offsets. This aids in **T1574.009 (Hijack Execution Flow: Path Interception by PATH Environment Variable)** by redirecting function pointers.
+
+```javascript
+// Calculate a function pointer offset in a vtable
+const vtablePtr = ptr("0x12345678");
+const targetFuncPtr = vtablePtr.add(0x20); // Offset to 5th entry
+console.log(`Target function: ${targetFuncPtr}`);
+```
+
+#### **3. Runtime Patching with `Interceptor.replace`**
+Replace a function’s implementation entirely using `Interceptor.replace`, useful for **T1562.003 (Impair Defenses: Disable or Modify Tools)** by neutering security checks.
+
+```javascript
+// Bypass a license check by replacing strcmp
+Interceptor.replace(Module.findExportByName(null, "strcmp"), new NativeCallback(
+  function(str1, str2) {
+    console.log(`strcmp(${str1}, ${str2}) bypassed!`);
+    return 0; // Force "equal" result
+  }, "int", ["pointer", "pointer"])
+);
+```
+
+**Authoritative Sources:**
+- [Frida API Reference: Memory](https://frida.re/docs/javascript-api/#
+
+#### Memory & NativePointer APIs
+Use `Memory` to read/write process memory and `NativePointer` for arithmetic:
+```javascript
+// Dump 32 bytes at a module's base address (e.g., unpacking T1027.009)
+const base = Module.findBaseAddress('target_module');
+const data = Memory.readByteArray(base, 32);
+console.log(data);
+
+// Resolve and patch a function pointer (e.g., hijacking T1127.001)
+const ptr = new NativePointer(0x12345678);
+ptr.writeU32(0xdeadbeef);  // Overwrite with new value
+```
+
+#### ObjC/Java APIs
+Hook Objective-C/Java methods dynamically:
+```javascript
+// Bypass iOS jailbreak checks (T1548.002: Abuse Elevation Control Mechanism)
+ObjC.classes.NSFileManager["- fileExistsAtPath:"].implementation = function(path) {
+  return false;  // Lie about jailbreak files
+};
+
+// Log Android keystore access (T1409: Credential Access via Keystore)
+Java.perform(function() {
+  var KeyStore = Java.use("java.security.KeyStore");
+  KeyStore.load.overload('[Ljava.security.KeyStore$LoadStoreParameter;').implementation = function(params) {
+    console.log("Keystore accessed with params: " + params);
+    this.load(params);
+  };
+});
+```
+
+#### `--no-pause` Flag
+Run hooks **non-interactively** (e.g., in CI/CD malware analysis):
+```bash
+frida --no-pause -l hook.js -f com.target.app -o output.log
+```
+*Use case*: Automate hooking for **T1106: Native API** calls without manual intervention.
+
+**Sources**:
+- [Frida API Reference: Memory & NativePointer](https://frida.re/docs/javascript-api/#memory)
+- [MITRE ATT&CK: T1127.001 & T1027.009](https://attack.mitre.org/techniques/T1127/001/)
+
 ### Threat Hunting & Detection Engineering
 To detect and hunt threats using Frida tracing, focus on identifying suspicious behavior related to techniques such as [T1218](https://attack.mitre.org/techniques/T1218) - "Signed Binary Proxy Execution" and [T1484](https://attack.mitre.org/techniques/T1484) - "Domain Policy Modification". Monitor Windows Event IDs 4688 and 4703 for signs of executable file creation and modification, which could indicate an adversary attempting to proxy execute a binary. Analyze the `CommandLine` field in these logs to identify suspicious command-line arguments. Additionally, inspect DNS query logs for unusual domain name resolutions, which may indicate an attempt to modify domain policies. Threat hunters can pivot on these findings by examining network traffic captures using Zeek or Suricata, focusing on HTTP requests to unknown or newly registered domains. For more information on threat hunting and detection engineering, visit the [Cybersecurity and Infrastructure Security Agency (CISA)](https://www.cisa.gov/) and [NSA Cybersecurity](https://www.nsa.gov/what-we-do/cybersecurity/) websites.
 
@@ -260,50 +342,6 @@ Evasion considerations:
 - [MITRE ATT&CK: T1055.002](https://attack.mitre.org/techniques/T1055/002/)
 - [Red Team Notes: Frida for Offensive Security](https://www.ired.team/offensive-security/code-injection-process-injection/injecting-dll-via-fridas-dynamic-instrumentation)
 
-
-### Essential Commands & Features
-
-Frida’s `Memory`, `NativePointer`, and `Interceptor.replace()` enable powerful runtime patching and memory manipulation, critical for analyzing or bypassing security controls. Below are the most useful commands and features not yet covered, with concrete examples and their tactical applications.
-
-#### **1. Memory Scanning & Manipulation (`Memory.scan` / `Memory.write`)**
-Use `Memory.scan` to locate specific byte patterns in process memory (e.g., hardcoded keys or strings) and `Memory.write` to overwrite them. This is invaluable for **T1553.004 (Install Root Certificate)** or **T1600.002 (Disable or Modify System Firewall)** by altering runtime configurations.
-
-```javascript
-// Scan for a hardcoded AES key (16 bytes) and replace it
-const keyPtr = Memory.scan(ptr("0x100000000"), 0x1000000, "A9 4A 2B 5C ...", {
-  onMatch: function(address, size) {
-    console.log(`Found key at: ${address}`);
-    Memory.writeByteArray(address, [0x00, 0x01, 0x02, ...]); // Overwrite
-    return 'stop'; // Halt after first match
-  }
-});
-```
-
-#### **2. NativePointer Arithmetic (`NativePointer.add` / `NativePointer.sub`)**
-Use `NativePointer` to perform pointer arithmetic, essential for navigating structures (e.g., C++ vtables) or calculating offsets. This aids in **T1574.009 (Hijack Execution Flow: Path Interception by PATH Environment Variable)** by redirecting function pointers.
-
-```javascript
-// Calculate a function pointer offset in a vtable
-const vtablePtr = ptr("0x12345678");
-const targetFuncPtr = vtablePtr.add(0x20); // Offset to 5th entry
-console.log(`Target function: ${targetFuncPtr}`);
-```
-
-#### **3. Runtime Patching with `Interceptor.replace`**
-Replace a function’s implementation entirely using `Interceptor.replace`, useful for **T1562.003 (Impair Defenses: Disable or Modify Tools)** by neutering security checks.
-
-```javascript
-// Bypass a license check by replacing strcmp
-Interceptor.replace(Module.findExportByName(null, "strcmp"), new NativeCallback(
-  function(str1, str2) {
-    console.log(`strcmp(${str1}, ${str2}) bypassed!`);
-    return 0; // Force "equal" result
-  }, "int", ["pointer", "pointer"])
-);
-```
-
-**Authoritative Sources:**
-- [Frida API Reference: Memory](https://frida.re/docs/javascript-api/#
 
 ### Detection Signatures & Reference Artifacts
 
@@ -386,52 +424,6 @@ rule EXPL_Office_TemplateInjection_Aug19 {
 | sample sha256 | `0154ee496b86147be94e4f288c94b2c6c78eaf08e2c1fdb80ee6a5cfb8bbec60` |
 | reproduce sample | a text file containing exactly: 'cyberlab benign training sample -- module 39-frida-tracing -- for detection-rule testing only
 ' |
-### Essential Commands & Features
-
-Frida’s advanced APIs and flags unlock deeper runtime inspection and automation. Below are **undocumented but critical** commands for memory manipulation, pointer arithmetic, and non-interactive hooking—key for analyzing obfuscated malware (e.g., **T1127.001: Trusted Developer Utilities Proxy Execution**) or unpacking custom encryption (e.g., **T1027.009: Obfuscated Files or Information: Embedded Payloads**).
-
-#### Memory & NativePointer APIs
-Use `Memory` to read/write process memory and `NativePointer` for arithmetic:
-```javascript
-// Dump 32 bytes at a module's base address (e.g., unpacking T1027.009)
-const base = Module.findBaseAddress('target_module');
-const data = Memory.readByteArray(base, 32);
-console.log(data);
-
-// Resolve and patch a function pointer (e.g., hijacking T1127.001)
-const ptr = new NativePointer(0x12345678);
-ptr.writeU32(0xdeadbeef);  // Overwrite with new value
-```
-
-#### ObjC/Java APIs
-Hook Objective-C/Java methods dynamically:
-```javascript
-// Bypass iOS jailbreak checks (T1548.002: Abuse Elevation Control Mechanism)
-ObjC.classes.NSFileManager["- fileExistsAtPath:"].implementation = function(path) {
-  return false;  // Lie about jailbreak files
-};
-
-// Log Android keystore access (T1409: Credential Access via Keystore)
-Java.perform(function() {
-  var KeyStore = Java.use("java.security.KeyStore");
-  KeyStore.load.overload('[Ljava.security.KeyStore$LoadStoreParameter;').implementation = function(params) {
-    console.log("Keystore accessed with params: " + params);
-    this.load(params);
-  };
-});
-```
-
-#### `--no-pause` Flag
-Run hooks **non-interactively** (e.g., in CI/CD malware analysis):
-```bash
-frida --no-pause -l hook.js -f com.target.app -o output.log
-```
-*Use case*: Automate hooking for **T1106: Native API** calls without manual intervention.
-
-**Sources**:
-- [Frida API Reference: Memory & NativePointer](https://frida.re/docs/javascript-api/#memory)
-- [MITRE ATT&CK: T1127.001 & T1027.009](https://attack.mitre.org/techniques/T1127/001/)
-
 ### Common Pitfalls & Result Validation
 
 When using Frida for dynamic tracing, analysts often encounter **false positives** or **miss critical behaviors** due to improper script design or validation. A frequent mistake is **over-filtering hooks**, which may exclude legitimate malicious activity (e.g., obfuscated API calls or delayed execution). For example, analysts targeting **T1059.003 (Windows Command Shell)** might miss commands if their Frida script only traces `CreateProcessW` without accounting for `ShellExecuteExW` or indirect execution via `cmd.exe /c`. Similarly, **T1102 (Web Service)** abuse—such as C2 communications over legitimate cloud services—can be overlooked if network-related hooks (e.g., `WinHttpOpen`) are too narrowly scoped.

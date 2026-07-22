@@ -259,25 +259,6 @@ When conducting network hunts, analysts often make mistakes that can lead to fal
 - If using Wireshark GUI, verify that the "Follow HTTP Stream" display includes the full header and body. Blank streams indicate incorrect selection of packet or stream index.
 
 
-### Essential Commands & Features
-
-Below are **high-impact `tshark` commands and features** not yet covered in this module, each paired with a concrete example and tactical use case. These capabilities directly support detection of **T1110.003 (Brute Force: Password Spraying)** and **T1560.001 (Archive Collected Data: Archive via Utility)**—techniques where structured output and statistical analysis are critical.
-
-| **Command/Flag**       | **Example**                                                                 | **When to Use**                                                                                     | **MITRE ATT&CK**                                                                 |
-|------------------------|-----------------------------------------------------------------------------|-----------------------------------------------------------------------------------------------------|----------------------------------------------------------------------------------|
-| `-Y <read filter>`     | `tshark -r capture.pcap -Y "http.request.method == POST && http.host == evil.com"` | Apply **BPF-like filters** to isolate traffic (e.g., suspicious HTTP POSTs to a C2 domain).        | [T1110.003](https://attack.mitre.org/techniques/T1110/003/) (Password Spraying)  |
-| `-z <stats>`           | `tshark -r capture.pcap -q -z io,phs`                                       | Generate **protocol hierarchy stats** to identify anomalous traffic volumes (e.g., unexpected SMB). | [T1560.001](https://attack.mitre.org/techniques/T1560/001/) (Archive via Utility) |
-| `-T ek|json|pdml`      | `tshark -r capture.pcap -T json -e ip.src -e dns.qry.name`                  | Export **structured output** (JSON/Elasticsearch/PDML) for SIEM ingestion or scripting.            | N/A                                                                              |
-| `-E <export options>`  | `tshark -r capture.pcap -T fields -E separator=, -e frame.time -e ip.src`   | Customize **field separators** (e.g., CSV) for log parsing or timeline analysis.                   | N/A                                                                              |
-
-**Key Notes:**
-- Use `-Y` to **filter traffic in real-time** (e.g., `dns.flags.response == 0` for DNS queries to attacker-controlled domains).
-- Combine `-z` with `-q` to **suppress packet output** while generating stats (e.g., `-z endpoints,ip` for top talkers).
-- For **automated analysis**, pair `-T json` with tools like `jq` to extract fields (e.g., `jq '.[]._source.layers.http[]?.["http.host"]'`).
-
-**Authoritative Sources:**
-- [Wireshark Display Filters (Official)](https://www.wireshark.org/docs/
-
 ### Detection Signatures & Reference Artifacts
 
 Real, community-maintained detection rules for this topic (defensive use only). The reference artifacts at the end are BENIGN, illustrative lab values -- not live indicators.

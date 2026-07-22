@@ -171,14 +171,6 @@ When analyzing malicious documents, leveraging advanced features of core tools l
 - [Didier Stevens Suite Documentation](https://blog.didierstevens.com/programs/pdf-tools/)
 - [REMnux Tools Guide: PDF Analysis](https://docs.remnux.org/discover-the-tools/analyze+documents/pdf)
 
-### Threat Hunting & Detection Engineering
-To detect malicious document-based attacks, threat hunters can monitor Windows Event IDs 4663 and 4738 for suspicious file access and creation patterns. Specifically, they can look for instances where a document opens a suspicious executable or script, indicating potential use of [T1499: Signature Validation Bypass](https://attack.mitre.org/techniques/T1499) or [T1625: Graphical User Interface Window Capture](https://attack.mitre.org/techniques/T1625). In network logs, such as those collected by Zeek or Suricata, analysts can search for HTTP requests containing suspicious document-related keywords or anomalies in file transfer protocols. Threat hunters can pivot on these findings by investigating related Windows Event IDs, such as 4688 for process creation, to identify potential command and control (C2) communications or lateral movement. For deeper analysis, security teams can leverage tools like Sysinternals or Windows Management Instrumentation (WMI) to inspect system calls and registry modifications. More information on threat hunting and detection engineering can be found at [https://www.cisecurity.org/](https://www.cisecurity.org/) and [https://www.fireeye.com/content/dam/fireeye-www/global/en/current-threats/pdfs/rpt-m-trends-2022.pdf](https://www.fireeye.com/content/dam/fireeye-www/global/en/current-threats/pdfs/rpt-m-trends-2022.pdf).
-
-
-### Essential Commands & Features
-
-To extract deeper insights from malicious documents, leverage these undemonstrated but critical commands and flags in the core tools:
-
 #### **Olevba (VBA Deobfuscation)**
 - **`--decode` (`-d`)** – Decodes obfuscated VBA strings (e.g., hex, Base64, or XOR-encoded payloads). Use when static analysis reveals suspicious patterns like `Chr()` or `StrReverse()`.
   ```bash
@@ -201,32 +193,13 @@ To extract deeper insights from malicious documents, leverage these undemonstrat
 - [Didier Stevens’ PDF Tools Documentation](https://blog.didierstevens.com/programs/pdf-tools/)
 - [REMnux Tools Guide: Olevba](https://docs.remnux.org/discover-the-tools/analyze+documents+and+scripts/office+files#olevba)
 
+### Threat Hunting & Detection Engineering
+To detect malicious document-based attacks, threat hunters can monitor Windows Event IDs 4663 and 4738 for suspicious file access and creation patterns. Specifically, they can look for instances where a document opens a suspicious executable or script, indicating potential use of [T1499: Signature Validation Bypass](https://attack.mitre.org/techniques/T1499) or [T1625: Graphical User Interface Window Capture](https://attack.mitre.org/techniques/T1625). In network logs, such as those collected by Zeek or Suricata, analysts can search for HTTP requests containing suspicious document-related keywords or anomalies in file transfer protocols. Threat hunters can pivot on these findings by investigating related Windows Event IDs, such as 4688 for process creation, to identify potential command and control (C2) communications or lateral movement. For deeper analysis, security teams can leverage tools like Sysinternals or Windows Management Instrumentation (WMI) to inspect system calls and registry modifications. More information on threat hunting and detection engineering can be found at [https://www.cisecurity.org/](https://www.cisecurity.org/) and [https://www.fireeye.com/content/dam/fireeye-www/global/en/current-threats/pdfs/rpt-m-trends-2022.pdf](https://www.fireeye.com/content/dam/fireeye-www/global/en/current-threats/pdfs/rpt-m-trends-2022.pdf).
+
+
 ### Adversary Emulation & Red-Team Perspective
 From an adversary's perspective, malicious documents can be used to gain initial access to a system, as seen in techniques such as [T1190](https://attack.mitre.org/techniques/T1190/) "Spearphishing via Service" and [T1562](https://attack.mitre.org/techniques/T1562/) "Impair Defenses". Attackers may use social engineering tactics to trick victims into opening malicious documents, which can then execute code and establish a foothold on the system. The malicious document may leave behind artifacts such as temporary files or registry entries, which can be detected by defenders. To evade detection, attackers may use code obfuscation or anti-debugging techniques to make it difficult for analysts to reverse-engineer the malicious code. Understanding these tactics, techniques, and procedures (TTPs) is crucial for effective adversary emulation and red-teaming. For more information on adversary emulation and red-teaming, see the [Cyber and Infrastructure Security Agency (CISA)](https://www.cisa.gov/) and [Center for Internet Security (CIS)](https://www.cisecurity.org/) resources.
 
-
-### Essential Commands & Features
-The flags and features below extend the analyst’s ability to decode, deobfuscate, extract embedded artifacts, and precisely inspect stream and object data—operations critical for detecting advanced macro-based attacks and hidden weaponisation.
-
-- **olevba –decode / –deobfuscate / –extract**  
-  `olevba --decode macro.doc` decodes common encodings (e.g., Base64, hex) inside VBA strings.  
-  `olevba --deobfuscate sample.doc` attempts to reverse string concatenation, character substitution, and function calls that hide malicious intent.  
-  `olevba --extract suspicious.doc` extracts embedded OLE objects or executable payloads.  
-  *Use these when static macro analysis yields obfuscated or encoded strings—critical for revealing payloads that trigger execution (MITRE T1059.005: Visual Basic for Applications).*
-
-- **oledump -s <index> -d**  
-  `oledump.py ransom.doc -s 12 -d` selects stream index 12 and dumps its raw bytes to stdout.  
-  *Use this to manually inspect suspicious streams (e.g., embedded Flash, XML, or exploited objects) without relying on automated extraction—essential when stream contents masquerade as benign data (MITRE T1203: Exploitation for Client Execution).*
-
-- **pdf-parser -o <obj> -d**  
-  `pdf-parser.py -o 7 -d exploit.pdf` selects object number 7 and dumps its stream or string content.  
-  *Use this to examine individual objects in a PDF, especially those with suspicious filters (e.g., FlateDecode, ASCIIHexDecode) or unusual cross‑reference entries—key for identifying hidden payloads injected into specific objects.*
-
-These commands align with deobfuscation and stream‑level inspection, directly countering techniques that rely on encoded VBA macros or embedded objects.
-
-**Authoritative Sources:**  
-[https://oletools.readthedocs.io/](https://oletools.readthedocs.io/)  
-[https://didierstevens.com/software/pdf-parser/](https://didierstevens.com/software/pdf-parser/)
 
 ### Common Pitfalls & Result Validation
 

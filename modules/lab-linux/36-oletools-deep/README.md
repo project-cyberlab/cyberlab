@@ -193,23 +193,6 @@ This reveals the decompressed VBA code, bypassing compression obfuscation.
 - [Didier Stevens’ `oletools` Documentation](https://www.decalage.info/oletools)
 - [CISA Malware Analysis: OLE Tools Guide](https://www.cisa.gov/resources-tools/services/malware-analysis)
 
-### Common Pitfalls & Result Validation
-
-A common mistake when using `olevba`, `mraptor`, or `rtfobj` is relying solely on static indicators, such as an `Auto_Open` flag or `Suspicious: VBA Stomping` warning, to classify a document as malicious. Many legitimate Office files trigger these alerts—for example, enterprise templates with delegitimize digital signatures or VBA code that performs benign administrative tasks. Without validation, analysts may produce false positives.
-
-To confirm findings, always cross-reference extracted VBA strings against known malicious patterns via sandbox detonation. Use dynamic analysis to observe runtime behavior: does the macro attempt to fetch a remote payload via `PowerShell` or `mshta`? Validate calls to `CreateObject("WScript.Shell")` and check for execution of shell commands or download of an encoded script. Avoid concluding that a macro is benign solely because it fails to run in a stripped environment; many maldocs check for sandboxes.
-
-Also watch for VBA code that decoys with legitimate error handlers while XOR-deobfuscating a second-stage downloader. Analysts frequently overlook obfuscated strings that only decode during execution, leading to missed IOCs. Use `olevba`'s `--reveal` mode to expose hidden strings, but remember that this still may not uncover Anti-Sandbox or Anti-VM logic. Common ATT&CK techniques associated with these malicious activities include **T1059.007 Command and Scripting Interpreter: JavaScript** (for dropped JS payloads) and **T1547.001 Boot or Logon Autostart Execution: Registry Run Keys / Startup Folder** (when macros modify `Run` keys for persistence). Always verify persistence mechanisms in a sandbox that simulates reboot.
-
-For authoritative guidance on oletools and macro validation, see:  
-[https://www.decalage.info/python/oletools](https://www.decalage.info/python/oletools)  
-[https://blog.didierstevens.com/2012/06/17/oletools-overview/](https://blog.didierstevens.com/2012/06/17/oletools-overview/)
-
-
-### Essential Commands & Features
-
-The `oledump.py` and `olevba` tools offer powerful features for analyzing malicious Office documents. Below are **critical but often overlooked** commands and flags with concrete examples:
-
 #### **oledump.py**
 - **`-s <stream>` (Select Stream)**
   Extract a specific stream by index (e.g., `-s 8` for stream 8). Useful when analyzing embedded macros or obfuscated payloads.
@@ -253,30 +236,6 @@ The `oledump.py` and `olevba` tools offer powerful features for analyzing malici
 - [Didier Stevens’ oledump.py Documentation](https://blog.didierstevens.com/programs/oledump-py/)
 - [OLE Tools GitHub Wiki (Deobfuscation Guide)](https://github.com/decalage2/oletools/wiki/olevba#deobfuscation)
 
-### Threat Hunting & Detection Engineering
-
-When hunting for **OLE-embedded threats** (e.g., malicious macros, embedded executables, or obfuscated scripts), focus on **process execution chains** and **unusual file interactions**. Key log sources include:
-
-- **Windows Event ID 4688** (Process Creation): Hunt for `winword.exe`, `excel.exe`, or `powerpnt.exe` spawning `cmd.exe`, `powershell.exe`, or `wscript.exe` with suspicious arguments (e.g., `-nop`, `-ep bypass`, `-encodedcommand`). Pivot on the **ParentProcessId** to trace execution back to the OLE host process.
-- **Sysmon Event ID 1** (Process Creation): Filter for **CommandLine** fields containing `rundll32.exe` with non-standard DLLs (e.g., `*.tmp` files in `%TEMP%`) or **ImageLoad** events (Event ID 7) for unexpected DLLs loaded by Office processes.
-- **Zeek/Suricata**: Monitor for **HTTP requests** (Zeek `http.log`) or **SMB traffic** (Zeek `smb_files.log`) where Office files (`*.doc`, `*.xls`, `*.ppt`) are downloaded from external IPs or written to unusual paths (e.g., `\\tsclient\`). Alert on **file hashes** (MD5/SHA256) matching known malicious OLE samples.
-
-**MITRE ATT&CK Techniques**:
-- **[T1202: Indirect Command Execution](https://attack.mitre.org/techniques/T1202/)** – Detect `rundll32.exe` or `regsvr32.exe` spawned by Office processes to execute embedded payloads.
-- **[T1553.002: Subvert Trust Controls: Code Signing](https://attack.mitre.org/techniques/T1553/002/)** – Hunt for Office files with **invalid or revoked signatures** (check `Authenticode` fields in Sysmon Event ID 1 or `pe` logs in Zeek).
-
-**Detection Pivots**:
-- **Parent-Child Process Anomalies**: `winword.exe` → `certutil.exe` (T1218.007) or `excel.exe` → `mshta.exe` (T1218.005).
-- **File System Artifacts**: Look for `.tmp` files in `%TEMP%` or `%APPDATA%` with high entropy (obfuscation) or dual extensions (e.g., `document.doc.js`).
-
-**Sources**:
-- [CERT-EU: Hunting for Malicious Office Documents](https://cert.europa.eu/static/WhitePapers/CERT-EU-SWP_1
-
-
-### Essential Commands & Features
-
-Beyond basic macro extraction, `olevba` and `oledump` offer powerful flags for deeper analysis of obfuscated or heavily encoded VBA macros. These commands are critical when investigating evasive malware leveraging **Obfuscated Files or Information (T1027)** or **Command and Scripting Interpreter (T1059)** techniques, including **T1059.006: Python** (used in macro-based Python droppers) and **T1562.001: Disable or Modify Tools** (e.g., anti-sandboxing via encoded VBA).
-
 #### Key Commands:
 1. **`olevba --decode`**
    Decodes common VBA encoding schemes (e.g., `Chr()`, `StrReverse`, or hex strings) to reveal hidden payloads. Use when macros contain suspicious string concatenation or numeric obfuscation.
@@ -306,6 +265,39 @@ Beyond basic macro extraction, `olevba` and `oledump` offer powerful flags for d
 
 **Sources**:
 - [OLE Tools GitHub: Advanced Usage](https://github.com/decalage
+
+### Common Pitfalls & Result Validation
+
+A common mistake when using `olevba`, `mraptor`, or `rtfobj` is relying solely on static indicators, such as an `Auto_Open` flag or `Suspicious: VBA Stomping` warning, to classify a document as malicious. Many legitimate Office files trigger these alerts—for example, enterprise templates with delegitimize digital signatures or VBA code that performs benign administrative tasks. Without validation, analysts may produce false positives.
+
+To confirm findings, always cross-reference extracted VBA strings against known malicious patterns via sandbox detonation. Use dynamic analysis to observe runtime behavior: does the macro attempt to fetch a remote payload via `PowerShell` or `mshta`? Validate calls to `CreateObject("WScript.Shell")` and check for execution of shell commands or download of an encoded script. Avoid concluding that a macro is benign solely because it fails to run in a stripped environment; many maldocs check for sandboxes.
+
+Also watch for VBA code that decoys with legitimate error handlers while XOR-deobfuscating a second-stage downloader. Analysts frequently overlook obfuscated strings that only decode during execution, leading to missed IOCs. Use `olevba`'s `--reveal` mode to expose hidden strings, but remember that this still may not uncover Anti-Sandbox or Anti-VM logic. Common ATT&CK techniques associated with these malicious activities include **T1059.007 Command and Scripting Interpreter: JavaScript** (for dropped JS payloads) and **T1547.001 Boot or Logon Autostart Execution: Registry Run Keys / Startup Folder** (when macros modify `Run` keys for persistence). Always verify persistence mechanisms in a sandbox that simulates reboot.
+
+For authoritative guidance on oletools and macro validation, see:  
+[https://www.decalage.info/python/oletools](https://www.decalage.info/python/oletools)  
+[https://blog.didierstevens.com/2012/06/17/oletools-overview/](https://blog.didierstevens.com/2012/06/17/oletools-overview/)
+
+
+### Threat Hunting & Detection Engineering
+
+When hunting for **OLE-embedded threats** (e.g., malicious macros, embedded executables, or obfuscated scripts), focus on **process execution chains** and **unusual file interactions**. Key log sources include:
+
+- **Windows Event ID 4688** (Process Creation): Hunt for `winword.exe`, `excel.exe`, or `powerpnt.exe` spawning `cmd.exe`, `powershell.exe`, or `wscript.exe` with suspicious arguments (e.g., `-nop`, `-ep bypass`, `-encodedcommand`). Pivot on the **ParentProcessId** to trace execution back to the OLE host process.
+- **Sysmon Event ID 1** (Process Creation): Filter for **CommandLine** fields containing `rundll32.exe` with non-standard DLLs (e.g., `*.tmp` files in `%TEMP%`) or **ImageLoad** events (Event ID 7) for unexpected DLLs loaded by Office processes.
+- **Zeek/Suricata**: Monitor for **HTTP requests** (Zeek `http.log`) or **SMB traffic** (Zeek `smb_files.log`) where Office files (`*.doc`, `*.xls`, `*.ppt`) are downloaded from external IPs or written to unusual paths (e.g., `\\tsclient\`). Alert on **file hashes** (MD5/SHA256) matching known malicious OLE samples.
+
+**MITRE ATT&CK Techniques**:
+- **[T1202: Indirect Command Execution](https://attack.mitre.org/techniques/T1202/)** – Detect `rundll32.exe` or `regsvr32.exe` spawned by Office processes to execute embedded payloads.
+- **[T1553.002: Subvert Trust Controls: Code Signing](https://attack.mitre.org/techniques/T1553/002/)** – Hunt for Office files with **invalid or revoked signatures** (check `Authenticode` fields in Sysmon Event ID 1 or `pe` logs in Zeek).
+
+**Detection Pivots**:
+- **Parent-Child Process Anomalies**: `winword.exe` → `certutil.exe` (T1218.007) or `excel.exe` → `mshta.exe` (T1218.005).
+- **File System Artifacts**: Look for `.tmp` files in `%TEMP%` or `%APPDATA%` with high entropy (obfuscation) or dual extensions (e.g., `document.doc.js`).
+
+**Sources**:
+- [CERT-EU: Hunting for Malicious Office Documents](https://cert.europa.eu/static/WhitePapers/CERT-EU-SWP_1
+
 
 ### Detection Signatures & Reference Artifacts
 
@@ -361,34 +353,6 @@ rule ScanBox_Malware_Generic {
 | sample sha256 | `87cb8e0b667310efb003e0ee78708839d4d3444e0459ee27f74e9c8c62e5f2b2` |
 | reproduce sample | a text file containing exactly: 'cyberlab benign training sample -- module 36-oletools-deep -- for detection-rule testing only
 ' |
-### Essential Commands & Features
-
-The `oledump` and `olevba` tools offer powerful flags to extract and analyze malicious Office documents. Below are the most useful commands not yet covered, with concrete examples and their tactical applications:
-
-1. **`oledump.py -s <stream>` (Select Stream)**
-   Isolate a specific OLE stream for focused analysis (e.g., VBA macros). Critical when dealing with multi-stream documents.
-   *Example:* `oledump.py -s 8 malicious.doc` (extracts stream 8).
-   *Use Case:* Targets **T1137.001 (Office Application Startup: Office Template Macros)** by pinpointing embedded macros in non-default streams.
-
-2. **`oledump.py -v` (Verbose VBA)**
-   Decompress and display VBA source code with metadata (e.g., line numbers, module names). Essential for manual code review.
-   *Example:* `oledump.py -v -s 8 malicious.doc` (shows VBA in stream 8).
-   *Use Case:* Detects **T1027.007 (Obfuscated Files or Information: Dynamic API Resolution)** by revealing obfuscated API calls.
-
-3. **`oledump.py -d` (Dump Raw)**
-   Export raw stream data (e.g., binary payloads) for further analysis. Useful for extracting embedded executables.
-   *Example:* `oledump.py -d -s 5 malicious.xls > payload.bin` (dumps stream 5 to a file).
-   *Use Case:* Uncovers **T1106 (Native API)** by exposing shellcode or PE files.
-
-4. **`olevba --decode` (Deobfuscate VBA)**
-   Automatically decodes common obfuscation techniques (e.g., string concatenation, base64). Reduces manual effort.
-   *Example:* `olevba --decode malicious.doc` (deobfuscates all VBA macros).
-   *Use Case:* Counters **T1027.006 (HTML Smuggling)** by revealing hidden URLs or payloads.
-
-**Sources:**
-- [Didier Stevens’ oledump Documentation](https://blog.didierstevens.com/programs/oledump-py/)
-- [REMnux Tools Guide: olevba](https://docs.remnux.org/discover-the-tools/analyze+documents+and+scripts/olevba)
-
 ### Adversary Emulation & Red-Team Perspective
 
 Attackers leverage **oletools** to dissect malicious Office documents during reconnaissance, enabling precise payload staging and evasion. A common tactic involves extracting embedded OLE objects (e.g., macros, scripts, or executables) to analyze their structure and identify detection gaps (e.g., obfuscated VBA or unusual storage locations). For example, `olevba` can decode obfuscated macros to reveal hardcoded C2 domains or shellcode, which attackers then refine to bypass static signatures (e.g., replacing `CreateObject("WScript.Shell")` with `GetObject("winmgmts:")` to evade keyword-based detections).

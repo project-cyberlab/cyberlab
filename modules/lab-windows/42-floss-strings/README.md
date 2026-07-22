@@ -157,82 +157,6 @@ Sample sha256: reproduce with `Get-FileHash .\exercise\sample.exe -Algorithm SHA
 ### Essential Commands & Features
 To further utilize the capabilities of 42-floss-strings, it's crucial to understand the `--filter` option, which allows for more precise control over the output. This feature is particularly useful when attempting to evade detection, a technique aligned with [T1211: Exploitation for Credential Access](https://attack.mitre.org/techniques/T1211) and [T1222: File and Directory Discovery](https://attack.mitre.org/techniques/T1222). For instance, to filter out strings that are less than 5 characters long, you can use the command `42-floss-strings --filter min-length=5 input_file`. This command is useful when you're looking for more substantial strings that could indicate malicious activity. Another example is using `42-floss-strings --filter max-length=10 input_file` to find shorter strings that might be used in obfuscated scripts. Understanding and leveraging these filters can significantly enhance the effectiveness of your analysis. For more detailed information on available filters and options, refer to the [official FLOSS documentation](https://www.cisa.gov/uscert/ncas/current-activity/article/2019/10/30/florian Roth%20Release%20Floss) or [Cybersecurity and Infrastructure Security Agency (CISA) resources](https://www.cisa.gov).
 
-### Common Pitfalls & Result Validation
-
-Analysts often misinterpret **42-floss-strings** output, leading to false positives or overlooked threats. A frequent mistake is assuming all extracted strings are malicious—legitimate binaries (e.g., signed software) may contain hardcoded paths, debug symbols, or API calls that resemble attacker artifacts. **False negatives** occur when analysts overlook obfuscated strings (e.g., XOR-encoded or split across memory regions), particularly in malware using **T1132.001 (Data Encoding: Standard Encoding)** or **T1001.003 (Data Obfuscation: Protocol Impersonation)**.
-
-To validate findings:
-1. **Cross-reference strings** with known benign software (e.g., Sysinternals tools) to filter noise.
-2. **Check entropy** of extracted strings—high entropy may indicate encoded payloads (e.g., base64, hex).
-3. **Correlate with other artifacts**: If strings suggest C2 domains (e.g., `api.example[.]com`), verify against network logs or **T1572 (Protocol Tunneling)** detections.
-4. **Reconstruct context**: Use disassemblers (e.g., Ghidra) to confirm if strings are referenced in suspicious code paths (e.g., dynamic API resolution).
-
-Avoid confirmation bias by testing hypotheses with controlled samples. For example, if a string resembles a **T1564.001 (Hide Artifacts: Hidden Files and Directories)** technique, verify file system activity via EDR telemetry.
-
-**Sources**:
-- [FireEye FLARE FLOSS Documentation](https://www.fireeye.com/blog/threat-research/2016/06/floss_automatically_extracting.html)
-- [NIST National Software Reference Library (NSRL)](https://www.nist.gov/itl/ssd/software-quality-group/national-software-reference-library-nsrl)
-
-
-### Essential Commands & Features
-
-Use `floss --json` to produce machine-readable output ideal for programmatic ingestion or correlation with other tools. For example:
-```
-floss --json malware.bin > floss_results.json
-```
-Apply `--no-static` when you only want decoded strings (e.g., deobfuscated or XOR-ed data) from dynamic analysis, skipping the static string dump. This reduces noise on already-clean binaries:
-```
-floss --no-static malware.bin
-```
-Set `--max-length` and `--min-length` to filter string length. To ignore very short artifacts and focus on meaningful indicators, limit to 8–256 characters:
-```
-floss --min-length 8 --max-length 256 packed.exe
-```
-Use when hunting for configuration strings or C2 domains that have a typical length range.
-
-For capa, `-j/--json` outputs structured results suitable for integration with SOAR or SIEM:
-```
-capa -j sample.exe > capa_report.json
-```
-Add `-v/--verbose` to see all matched rules, not just the top‑level capabilities – critical when analyzing stealthy malware:
-```
-capa -v unpacked.dll
-```
-Suppress progress output with `-q/--quiet` when scripting or chaining commands:
-```
-capa -q -j malicious.exe | jq '.rules[] | select(.matches | length > 0)'
-```
-
-These commands directly support detecting techniques such as **T1055.001 (Process Injection: DLL Injection)** (e.g., by revealing injected DLL names or offsets) and **T1204.002 (User Execution: Malicious File)** (e.g., through extracted user‑facing strings like document macros). For further reading, see the FLOSS usage guide on GitHub and the SANS reading room article on automated string analysis.  
-https://github.com/mandiant/floss  
-https://www.sans.org/reading-room/whitepapers/malicious/malware-analysis-strings-33620
-
-### Threat Hunting & Detection Engineering
-
-When hunting for adversaries abusing **42-floss-strings** (or similar static-analysis tools), focus on **T1036.005 (Masquerading: Match Legitimate Name or Location)** and **T1562.002 (Impair Defenses: Disable Windows Event Logging)**. Attackers may rename `floss.exe` to blend into legitimate processes (e.g., `svchost.exe -k netsvcs`) or suppress logging to evade detection.
-
-**Detection Logic:**
-1. **Windows Event Logs (Sysmon Event ID 1)**:
-   - Hunt for process creation events where `OriginalFileName` (e.g., `floss.exe`) does not match the `Image` path (e.g., `C:\Temp\svchost.exe`). Pivot on `ProcessGuid` to correlate with **Event ID 11 (FileCreate)** for dropped binaries.
-   - Example fields: `Image`, `OriginalFileName`, `CommandLine`, `ParentImage`.
-
-2. **Zeek/Suricata Network Telemetry**:
-   - Monitor for **unusual outbound connections** from renamed `floss.exe` processes (e.g., `svchost.exe` contacting C2 over **T1071.001 (Application Layer Protocol: Web Protocols)**). Use Zeek’s `conn.log` to filter for `service == "http"` and `uid` tied to suspicious parent processes.
-   - Suricata can alert on **T1036.005** by detecting mismatched HTTP `User-Agent` strings (e.g., `floss/2.0` from a `svchost.exe` process).
-
-**Hunting Pivots:**
-- **Sysmon Event ID 23 (FileDelete)**: Look for cleanup of renamed `floss.exe` artifacts.
-- **Windows Security Log (Event ID 4688)**: Cross-reference `NewProcessName` with `floss.exe` hashes (e.g., via `SHA256Hash`).
-
-**Sources:**
-- [MITRE ATT&CK: T1036.005](https://attack.mitre.org/techniques/T1036/005/)
-- [SpecterOps: Detecting Masquerading with Sysmon](https://posts.specterops.io/detecting-masquerading-with-sysmon-8861b7b4c594)
-
-
-### Essential Commands & Features
-
-FLOSS and Capa offer powerful flags to refine analysis, particularly for detecting obfuscated strings or extracting structured threat intelligence. Below are the most useful undemonstrated commands, with concrete examples and use cases:
-
 #### **FLOSS Advanced Flags**
 1. **`--json`**: Export results in JSON for automated processing (e.g., SIEM ingestion).
    ```bash
@@ -274,6 +198,45 @@ FLOSS and Capa offer powerful flags to refine analysis, particularly for detecti
 **Sources**:
 - FLOSS Docs: [https://github.com/mandiant/flare-floss/blob/master/doc/usage.md](https://github.com/mandiant/flare-floss/blob/master/doc/usage.md)
 - Capa Rules & ATT&CK Mapping: [https://
+
+### Common Pitfalls & Result Validation
+
+Analysts often misinterpret **42-floss-strings** output, leading to false positives or overlooked threats. A frequent mistake is assuming all extracted strings are malicious—legitimate binaries (e.g., signed software) may contain hardcoded paths, debug symbols, or API calls that resemble attacker artifacts. **False negatives** occur when analysts overlook obfuscated strings (e.g., XOR-encoded or split across memory regions), particularly in malware using **T1132.001 (Data Encoding: Standard Encoding)** or **T1001.003 (Data Obfuscation: Protocol Impersonation)**.
+
+To validate findings:
+1. **Cross-reference strings** with known benign software (e.g., Sysinternals tools) to filter noise.
+2. **Check entropy** of extracted strings—high entropy may indicate encoded payloads (e.g., base64, hex).
+3. **Correlate with other artifacts**: If strings suggest C2 domains (e.g., `api.example[.]com`), verify against network logs or **T1572 (Protocol Tunneling)** detections.
+4. **Reconstruct context**: Use disassemblers (e.g., Ghidra) to confirm if strings are referenced in suspicious code paths (e.g., dynamic API resolution).
+
+Avoid confirmation bias by testing hypotheses with controlled samples. For example, if a string resembles a **T1564.001 (Hide Artifacts: Hidden Files and Directories)** technique, verify file system activity via EDR telemetry.
+
+**Sources**:
+- [FireEye FLARE FLOSS Documentation](https://www.fireeye.com/blog/threat-research/2016/06/floss_automatically_extracting.html)
+- [NIST National Software Reference Library (NSRL)](https://www.nist.gov/itl/ssd/software-quality-group/national-software-reference-library-nsrl)
+
+
+### Threat Hunting & Detection Engineering
+
+When hunting for adversaries abusing **42-floss-strings** (or similar static-analysis tools), focus on **T1036.005 (Masquerading: Match Legitimate Name or Location)** and **T1562.002 (Impair Defenses: Disable Windows Event Logging)**. Attackers may rename `floss.exe` to blend into legitimate processes (e.g., `svchost.exe -k netsvcs`) or suppress logging to evade detection.
+
+**Detection Logic:**
+1. **Windows Event Logs (Sysmon Event ID 1)**:
+   - Hunt for process creation events where `OriginalFileName` (e.g., `floss.exe`) does not match the `Image` path (e.g., `C:\Temp\svchost.exe`). Pivot on `ProcessGuid` to correlate with **Event ID 11 (FileCreate)** for dropped binaries.
+   - Example fields: `Image`, `OriginalFileName`, `CommandLine`, `ParentImage`.
+
+2. **Zeek/Suricata Network Telemetry**:
+   - Monitor for **unusual outbound connections** from renamed `floss.exe` processes (e.g., `svchost.exe` contacting C2 over **T1071.001 (Application Layer Protocol: Web Protocols)**). Use Zeek’s `conn.log` to filter for `service == "http"` and `uid` tied to suspicious parent processes.
+   - Suricata can alert on **T1036.005** by detecting mismatched HTTP `User-Agent` strings (e.g., `floss/2.0` from a `svchost.exe` process).
+
+**Hunting Pivots:**
+- **Sysmon Event ID 23 (FileDelete)**: Look for cleanup of renamed `floss.exe` artifacts.
+- **Windows Security Log (Event ID 4688)**: Cross-reference `NewProcessName` with `floss.exe` hashes (e.g., via `SHA256Hash`).
+
+**Sources:**
+- [MITRE ATT&CK: T1036.005](https://attack.mitre.org/techniques/T1036/005/)
+- [SpecterOps: Detecting Masquerading with Sysmon](https://posts.specterops.io/detecting-masquerading-with-sysmon-8861b7b4c594)
+
 
 ### Detection Signatures & Reference Artifacts
 

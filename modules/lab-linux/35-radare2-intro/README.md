@@ -217,9 +217,6 @@ For **Obfuscated Files or Information (T1027.006: HTML Smuggling)**, inspect net
 - [Splunk Threat Research: Detecting HTML Smuggling](https://www.splunk.com/en_us/blog/security/detecting-html-smuggling.html)
 
 
-### Essential Commands & Features
-To further enhance analysis and navigation in radare2, several essential commands and features can be utilized. The `afl` command is used to list all functions in the binary, while `pdf @func` can be used to disassemble a specific function. For example, `pdf @main` will disassemble the main function. The `s` command is used to seek to a specific offset, and `V!` can be used to enter visual mode. The `px` command is used to display the hexdump of a region, and `iS` can be used to display section information. The `izz` command is used to analyze and display a string, and `is~` can be used to search for a string. These commands are particularly useful when analyzing malware that utilizes techniques such as [T1588: Obtain Capabilities](https://attack.mitre.org/techniques/T1588/) and [T1595: Active Scanning](https://attack.mitre.org/techniques/T1595/), where deep analysis and navigation of the binary are required. For more information on radare2 and its features, refer to the official radare2 documentation at https://book.rada.re/ and the radare2 GitHub page at https://github.com/radareorg/radare2.
-
 ### Detection Guidance
 
 This module teaches a forensic/analysis skill rather than a specific malware family, so no single community detection rule maps to it directly. For detection engineering on the artifacts examined here, use these authoritative sources:
@@ -229,43 +226,6 @@ This module teaches a forensic/analysis skill rather than a specific malware fam
 - MITRE ATT&CK (map findings to techniques + real-world Procedure Examples): https://attack.mitre.org/
 
 When your analysis surfaces an indicator (hash, path, registry key, network artifact), pivot to the matching ATT&CK technique for documented real-world usage, and search the Sigma/YARA repos above for a maintained rule covering it.
-
-### Essential Commands & Features
-
-Mastering these **radare2** and **Cutter** commands will accelerate your reverse-engineering workflow. Each example assumes you’ve already loaded a binary (e.g., `r2 -AAA ./malware.exe` or via Cutter’s GUI).
-
-1. **`pd N` – Disassemble *N* Instructions**
-   Use when analyzing function prologues or small code blocks (e.g., anti-analysis checks).
-   *Example*: `pd 10 @ main` disassembles 10 instructions at `main`.
-   *Relevance*: Critical for inspecting **T1027.009 Obfuscated Files or Information: Embedded Payloads** (e.g., XOR-encoded shellcode).
-
-2. **`px W @ addr` – Hexdump *W* Bytes**
-   Inspect raw data (e.g., embedded strings, config blobs).
-   *Example*: `px 64 @ 0x00401000` dumps 64 bytes at `0x00401000`.
-   *Relevance*: Helps detect **T1553.002 Subvert Trust Controls: Code Signing** (e.g., malformed certificates in binaries).
-
-3. **`s addr` – Seek to Address**
-   Navigate to a specific offset (e.g., after `afl` lists functions).
-   *Example*: `s sym.imp.CreateProcessA` jumps to the import.
-   *Tip*: Use `s-`/`s+` to move backward/forward.
-
-4. **`V` – Visual Mode**
-   Interactive disassembly/hexdump with keyboard shortcuts (e.g., `p`/`P` to cycle views).
-   *Use Case*: Quickly trace execution flow or patch bytes (press `i` to insert).
-
-5. **Cutter’s Scripting (`scripti`)**
-   Automate analysis with Python (e.g., batch renaming functions).
-   *Example*:
-   ```python
-   for f in cutter.cmdj("aflj"):
-       if "sub_" in f["name"]:
-           cutter.cmd(f"afn interesting_{f['offset']} @ {f['offset']}")
-   ```
-   *Relevance*: Speeds up triage of **T1562.004 Impair Defenses: Disable or Modify System Firewall** (e.g., identifying firewall rule modifications).
-
-**Sources**:
-- [Radare2 Book: Visual Mode](https://book.rada.re/visual_mode/visual_mode.html)
-- [Cutter Scripting Docs](https://cutter.re/docs/scripting.html)
 
 ### Adversary Emulation & Red-Team Perspective
 

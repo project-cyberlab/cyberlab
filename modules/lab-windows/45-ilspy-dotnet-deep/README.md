@@ -360,6 +360,31 @@ de4dot --don malware_cleaned.exe
 - [ILSpy GitHub: Command-Line Options](https://github.com/icsharpcode/ILSpy/wiki/Command-Line-Options)
 - [FireEye FLARE: Deobfuscating .NET with de4dot](https://www.fireeye.com/blog/threat-research/2018/03/deobfuscating-net-with-de4dot.html)
 
+#### `ilspycmd` Flags
+- **`--project`** – Generate a **compilable Visual Studio project** instead of loose files. Use when you need to rebuild or debug the decompiled code.
+  ```bash
+  ilspycmd --project malware.dll -o output_dir
+  ```
+- **`--public-only`** – Strip **private/internal** members, leaving only public APIs. Ideal for analyzing obfuscated malware (e.g., **T1027.002: Software Packing**) where internal logic is noise.
+  ```bash
+  ilspycmd --public-only obfuscated.dll
+  ```
+- **`--no-dead-code`** – Remove **unused methods/fields** to reduce clutter. Useful for analyzing **T1127.001: Trusted Developer Utilities Proxy Execution** (e.g., MSBuild abuse) where dead code may hide malicious logic.
+
+#### `de4dot` Flags
+- **`--dont-rename`** – Preserve **original symbol names** (e.g., `Class1` → `C2CommandHandler`). Critical for tracking obfuscated strings in **T1059.005: Command and Scripting Interpreter (Visual Basic)**.
+  ```bash
+  de4dot --dont-rename malware.exe
+  ```
+- **Obfuscator-Specific Modes** – Force deobfuscation for known tools (e.g., ConfuserEx, Dotfuscator). Use when default heuristics fail:
+  ```bash
+  de4dot --obfuscator confuser malware.exe
+  ```
+
+**Sources:**
+- [ILSpy Command-Line Documentation (GitLab)](https://github.com/icsharpcode/ILSpy/wiki/Command-Line-Options)
+- [de4dot Usage Guide (GitHub Wiki)](https://github.com/de4dot/de4dot/wiki/Usage)
+
 ### Common Pitfalls & Result Validation
 
 A common pitfall when using ILSpy for deep .NET analysis is treating decompiled code as a complete representation of the binary’s behavior. Malware frequently employs obfuscators (ConfuserEx, SmartAssembly) that produce unreadable control flow or empty method bodies. Analysts may mistakenly dismiss such methods as benign when they actually invoke `Assembly.Load(byte[])` at runtime to load embedded payloads via reflection. Another mistake is failing to check for masquerading: attackers rename assembly metadata (e.g., `System.Core` vs. `Syst3m.C0re`) to mimic legitimate libraries (MITRE T1036, Masquerading). Additionally, .NET droppers often inject into other processes using `CreateRemoteThread` or `NtCreateThreadEx` via P/Invoke (MITRE T1055, Process Injection). Scrutinizing only the managed code will entirely miss this capability.
@@ -372,38 +397,6 @@ Sources:
 - Elastic Security Labs, *Unmasking .NET Malware: A Static Analysis Approach*, https://www.elastic.co/security-labs/unmasking-net-malware
 - CrowdStrike, *How to Analyze Malicious .NET Samples*, https://www.crowdstrike.com/blog/how-to-analyze-malicious-net-samples/
 
-
-### Essential Commands & Features
-
-Master these `ilspycmd` and `de4dot` flags to accelerate .NET reverse-engineering and evasion analysis:
-
-1. **Project Export (`-p`)**
-   Reconstruct a compilable Visual Studio project instead of loose files. Critical when analyzing obfuscated malware that relies on build-time transformations (e.g., **T1127.001: Trusted Developer Utilities Proxy Execution**).
-   ```bash
-   ilspycmd -p -o ./recovered_project malware.dll
-   ```
-
-2. **Tree View (`-t`)**
-   Display a hierarchical namespace/class/member tree. Ideal for quickly locating entry points in large assemblies (e.g., **T1622: Debugger Evasion**).
-   ```bash
-   ilspycmd -t malware.dll
-   ```
-
-3. **Output Directory (`-o`)**
-   Redirect decompiled output to a specific folder. Use with `-p` to organize multi-file projects.
-   ```bash
-   ilspycmd -o ./output_dir malware.dll
-   ```
-
-4. **Deobfuscation Controls**
-   Preserve original names with `--dont-rename` and retain encryption keys with `--ke` to analyze string decryption routines (e.g., **T1027.003: Steganography**).
-   ```bash
-   de4dot --dont-rename --ke malware_cleaned.dll
-   ```
-
-**Sources:**
-- [ILSpy Command-Line Documentation](https://github.com/icsharpcode/ILSpy/wiki/Command-Line-Interface)
-- [de4dot Usage Guide](https://github.com/de4dot/de4dot/blob/master/README.md)
 
 ### Threat Hunting & Detection Engineering
 
@@ -513,35 +506,6 @@ rule ScanBox_Malware_Generic {
 | sample sha256 | `5064744e37c49be312a3ee2fe22dc07dada2f821eae499213f46956543e41896` |
 | reproduce sample | a text file containing exactly: 'cyberlab benign training sample -- module 45-ilspy-dotnet-deep -- for detection-rule testing only
 ' |
-### Essential Commands & Features
-
-Below are **high-impact** `ilspycmd` and `de4dot` commands that are **not** covered in the main lab but are critical for real-world .NET reverse-engineering.
-
-#### `ilspycmd` Flags
-- **`--project`** – Generate a **compilable Visual Studio project** instead of loose files. Use when you need to rebuild or debug the decompiled code.
-  ```bash
-  ilspycmd --project malware.dll -o output_dir
-  ```
-- **`--public-only`** – Strip **private/internal** members, leaving only public APIs. Ideal for analyzing obfuscated malware (e.g., **T1027.002: Software Packing**) where internal logic is noise.
-  ```bash
-  ilspycmd --public-only obfuscated.dll
-  ```
-- **`--no-dead-code`** – Remove **unused methods/fields** to reduce clutter. Useful for analyzing **T1127.001: Trusted Developer Utilities Proxy Execution** (e.g., MSBuild abuse) where dead code may hide malicious logic.
-
-#### `de4dot` Flags
-- **`--dont-rename`** – Preserve **original symbol names** (e.g., `Class1` → `C2CommandHandler`). Critical for tracking obfuscated strings in **T1059.005: Command and Scripting Interpreter (Visual Basic)**.
-  ```bash
-  de4dot --dont-rename malware.exe
-  ```
-- **Obfuscator-Specific Modes** – Force deobfuscation for known tools (e.g., ConfuserEx, Dotfuscator). Use when default heuristics fail:
-  ```bash
-  de4dot --obfuscator confuser malware.exe
-  ```
-
-**Sources:**
-- [ILSpy Command-Line Documentation (GitLab)](https://github.com/icsharpcode/ILSpy/wiki/Command-Line-Options)
-- [de4dot Usage Guide (GitHub Wiki)](https://github.com/de4dot/de4dot/wiki/Usage)
-
 ### Adversary Emulation & Red-Team Perspective
 
 From an adversary’s perspective, **ILSpy** and similar .NET decompilers (e.g., dnSpy, dotPeek) are powerful tools for reverse engineering compiled .NET assemblies to extract source code, hardcoded credentials, API keys, or proprietary logic. Attackers leverage decompiled code to identify vulnerabilities (e.g., insecure cryptographic implementations, authentication bypasses) or repurpose legitimate libraries for malicious use, such as crafting custom payloads or weaponizing signed binaries.

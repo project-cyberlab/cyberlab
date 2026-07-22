@@ -181,12 +181,6 @@ Mastering `tshark`’s command-line capabilities accelerates analysis and enable
 - [Wireshark Man Page (tshark)](https://www.wireshark.org/docs/man-pages/tshark.html)
 - [CISA Tshark Cheat Sheet](https://www.cisa.gov/sites/default/files/publications/tshark_cheat_sheet.pdf)
 
-### Threat Hunting & Detection Engineering
-To effectively hunt and detect threats, security analysts must leverage various log sources and tools. For instance, analyzing Windows Event ID 4688 (Process Creation) can help identify suspicious process executions, which may indicate the use of [T1204](https://attack.mitre.org/techniques/T1204) - User Execution or [T1218](https://attack.mitre.org/techniques/T1218) - Signed Binary Proxy Execution. By examining the `CommandLine` field in these event logs, analysts can detect potential malicious activity, such as unusual script executions or unexpected system calls. Additionally, threat hunters can pivot on suspicious network activity, like unusual DNS queries or HTTP requests, to uncover hidden threats. By integrating these detection techniques with tools like Wireshark, security teams can enhance their threat hunting capabilities and improve overall detection engineering. For more information on threat hunting and detection engineering, visit the [Cyber and Infrastructure Security Agency (CISA)](https://www.cisa.gov/) or the [National Institute of Standards and Technology (NIST)](https://www.nist.gov/) websites.
-
-
-### Essential Commands & Features
-
 #### **TShark: Advanced Filtering & File Operations**
 TShark’s command-line power shines with filters and file I/O. Use `-Y` (read filter) to isolate traffic *after* capture, e.g., detect **ARP Spoofing (T1557.002: Adversary-in-the-Middle: ARP Cache Poisoning)** by filtering for duplicate IPs:
 ```bash
@@ -211,6 +205,38 @@ Tailor Wireshark’s UI to prioritize critical fields. Create a **C2 Detection P
 - [TShark Man Page (Debian)](https://manpages.debian.org/bookworm/wireshark/tshark.1.en.html)
 - [Wireshark Customization Guide (SANS)](https://www.sans.org/blog/customizing-wireshark/)
 
+#### **TShark: Advanced Filters & Analysis**
+- **`-Y` (Read Filter)**: Apply display filters directly in TShark to isolate suspicious traffic. Example: Detect **T1070.001 Indicator Removal: Clear Windows Event Logs** by filtering for SMB traffic (port 445) with `smb2.cmd == 0x0a` (log deletion commands).
+  ```bash
+  tshark -r capture.pcap -Y "tcp.port == 445 && smb2.cmd == 0x0a"
+  ```
+- **`-w` (Write PCAP)**: Save filtered traffic for offline analysis. Critical for preserving evidence of **T1560.002 Archive Collected Data: Archive via Library** (e.g., ZIP/RAR exfiltration).
+  ```bash
+  tshark -r input.pcap -Y "http.request.method == POST" -w exfil.pcap
+  ```
+- **`-z` (Statistics)**: Generate protocol hierarchies or endpoint summaries. Useful for spotting **T1021.001 Remote Services: Remote Desktop Protocol** anomalies.
+  ```bash
+  tshark -r capture.pcap -z io,phs -q
+  ```
+- **Follow TCP Streams**: Reconstruct sessions (e.g., C2 traffic via **T1071.003 Application Layer Protocol: Mail Protocols**).
+  ```bash
+  tshark -r capture.pcap -q -z follow,tcp,ascii,1
+  ```
+
+#### **Wireshark: Visual Analysis**
+- **IO Graph**: Visualize traffic spikes (e.g., **T1048.002 Exfiltration Over Alternative Protocol: Asymmetric Encryption**).
+  *Navigate*: **Statistics → IO Graph** → Set Y-axis to "Bytes/s" and filter for `dns.flags.response == 0`.
+- **Expert Info (`Ex`)**: Highlight protocol errors or unusual behavior (e.g., **T1572 Protocol Tunneling**).
+  *Navigate*: **Analyze → Expert Info** → Sort by "Severity".
+
+**Sources**:
+- [Wireshark Display Filters (Official)](https://www.wireshark.org/docs/man-pages/wireshark-filter.html)
+- [MITRE ATT&CK: TShark for Threat Hunting (Splunk)](https://www.splunk.com/en_us/blog/security/hunting-with-tshark.html)
+
+### Threat Hunting & Detection Engineering
+To effectively hunt and detect threats, security analysts must leverage various log sources and tools. For instance, analyzing Windows Event ID 4688 (Process Creation) can help identify suspicious process executions, which may indicate the use of [T1204](https://attack.mitre.org/techniques/T1204) - User Execution or [T1218](https://attack.mitre.org/techniques/T1218) - Signed Binary Proxy Execution. By examining the `CommandLine` field in these event logs, analysts can detect potential malicious activity, such as unusual script executions or unexpected system calls. Additionally, threat hunters can pivot on suspicious network activity, like unusual DNS queries or HTTP requests, to uncover hidden threats. By integrating these detection techniques with tools like Wireshark, security teams can enhance their threat hunting capabilities and improve overall detection engineering. For more information on threat hunting and detection engineering, visit the [Cyber and Infrastructure Security Agency (CISA)](https://www.cisa.gov/) or the [National Institute of Standards and Technology (NIST)](https://www.nist.gov/) websites.
+
+
 ### Adversary Emulation & Red-Team Perspective
 
 Attackers leverage Wireshark’s deep-packet inspection capabilities to **reconnoiter networks, exfiltrate data, and evade detection**—often by abusing legitimate traffic analysis tools to blend in with normal operations. A common tactic involves **capturing and reconstructing sensitive data** (e.g., credentials, session tokens) from unencrypted protocols (e.g., HTTP, FTP, or legacy SMBv1) using Wireshark’s *Follow TCP Stream* feature. This aligns with **[T1040: Network Sniffing](https://attack.mitre.org/techniques/T1040/)**, where adversaries passively monitor traffic to harvest credentials or intellectual property. For example, red teams may deploy Wireshark on a compromised host (via [T1059.001: PowerShell](https://attack.mitre.org/techniques/T1059/001/)) to capture plaintext credentials during internal reconnaissance.
@@ -221,32 +247,6 @@ To evade detection, attackers often **fragment or encrypt exfiltrated data** bef
 - [MITRE ATT&CK: Network Sniffing (T1040)](https://attack.mitre.org/techniques/T1040/)
 - [FireEye: Red Team Techniques for Evasion](https://www.fireeye.com/blog/threat-research/2021/04/red-team-techniques-for-evasion.html)
 
-
-### Essential Commands & Features
-
-While the GUI provides interactive analysis, `tshark` exposes critical CLI capabilities that enable automation and precise extraction. Master these five commands to operationalize packet analysis beyond simple capture.
-
-- **`-Y` (Read Filter)**: Applies a display filter at read time, discarding non-matching packets.  
-  *Example*: `tshark -Y "http.request" -r capture.pcap` isolates only HTTP requests.  
-  *Use case*: Rapidly reduce a large capture to relevant traffic without intermediate files.
-
-- **`-w` (Write Pcap)**: Saves filtered output to a new pcap file.  
-  *Example*: `tshark -r capture.pcap -Y "tcp.port==443" -w https_traffic.pcap` creates a subset pcap.  
-  *Use case*: Share or process only suspicious streams while preserving original data.
-
-- **`-z` (Statistics)**: Generates summary statistics. Combine with `io,phs` for protocol hierarchy or `conv,tcp` for conversations.  
-  *Example*: `tshark -r capture.pcap -z io,phs` quickly exposes dominant protocols.  
-  *Use case*: Initial triage to identify unusual or unauthorized protocols (e.g., unexpected ICMP tunneling).
-
-- **`-E` (Output Formatting)**: Used with `-T fields` to control CSV, tab, or quoted output.  
-  *Example*: `tshark -r capture.pcap -T fields -E separator=, -e ip.src -e http.host -e http.request.uri` exports source IP, host, and URI.  
-  *Use case*: Feed extracted indicators into SIEM or threat intelligence pipelines.
-
-- **Follow Stream (`-z follow,tcp,ascii,<stream_index>`)**: Reassembles and prints the application‑layer payload of a TCP stream.  
-  *Example*: `tshark -r capture.pcap -z follow,tcp,ascii,0` shows the first stream’s content.  
-  *Use case*: Reveal credential stuffing, command injection, or data exfiltration in plaintext.
-
-These capabilities directly support detection of **T1071.002 – Web Protocols** (e.g., tunneling C2 over HTTP) and **T1190 – Exploit Public-Facing Application** (e.g., probing for SQLi or RCE in HTTP payloads). For official reference, see the `tshark` man page (<https://www.wireshark.org/docs/man-pages/tshark.html>) and SANS’s tshark filtering guide (<https://www.sans.org/blog/using-tshark-to-filter-and-analyze-packet-captures/>).
 
 ### Detection Signatures & Reference Artifacts
 
@@ -302,36 +302,6 @@ rule ScanBox_Malware_Generic {
 | sample sha256 | `44ebe4bbe6f74ca0e33c4f9be08791148d4be72216db4a68cf58856309586b46` |
 | reproduce sample | a text file containing exactly: 'cyberlab benign training sample -- module 24-wireshark-deep -- for detection-rule testing only
 ' |
-### Essential Commands & Features
-
-#### **TShark: Advanced Filters & Analysis**
-- **`-Y` (Read Filter)**: Apply display filters directly in TShark to isolate suspicious traffic. Example: Detect **T1070.001 Indicator Removal: Clear Windows Event Logs** by filtering for SMB traffic (port 445) with `smb2.cmd == 0x0a` (log deletion commands).
-  ```bash
-  tshark -r capture.pcap -Y "tcp.port == 445 && smb2.cmd == 0x0a"
-  ```
-- **`-w` (Write PCAP)**: Save filtered traffic for offline analysis. Critical for preserving evidence of **T1560.002 Archive Collected Data: Archive via Library** (e.g., ZIP/RAR exfiltration).
-  ```bash
-  tshark -r input.pcap -Y "http.request.method == POST" -w exfil.pcap
-  ```
-- **`-z` (Statistics)**: Generate protocol hierarchies or endpoint summaries. Useful for spotting **T1021.001 Remote Services: Remote Desktop Protocol** anomalies.
-  ```bash
-  tshark -r capture.pcap -z io,phs -q
-  ```
-- **Follow TCP Streams**: Reconstruct sessions (e.g., C2 traffic via **T1071.003 Application Layer Protocol: Mail Protocols**).
-  ```bash
-  tshark -r capture.pcap -q -z follow,tcp,ascii,1
-  ```
-
-#### **Wireshark: Visual Analysis**
-- **IO Graph**: Visualize traffic spikes (e.g., **T1048.002 Exfiltration Over Alternative Protocol: Asymmetric Encryption**).
-  *Navigate*: **Statistics → IO Graph** → Set Y-axis to "Bytes/s" and filter for `dns.flags.response == 0`.
-- **Expert Info (`Ex`)**: Highlight protocol errors or unusual behavior (e.g., **T1572 Protocol Tunneling**).
-  *Navigate*: **Analyze → Expert Info** → Sort by "Severity".
-
-**Sources**:
-- [Wireshark Display Filters (Official)](https://www.wireshark.org/docs/man-pages/wireshark-filter.html)
-- [MITRE ATT&CK: TShark for Threat Hunting (Splunk)](https://www.splunk.com/en_us/blog/security/hunting-with-tshark.html)
-
 ### Common Pitfalls & Result Validation
 
 Analysts often misinterpret Wireshark’s output by overlooking **packet fragmentation** or **TCP reassembly errors**, leading to false negatives in detecting exfiltration (e.g., **T1030: Data Transfer Size Limits**) or command-and-control (C2) traffic (e.g., **T1571: Non-Standard Port**). For example, fragmented packets may evade simple string searches, while TCP stream reassembly failures can break protocol parsing, obscuring malicious payloads. To validate findings:

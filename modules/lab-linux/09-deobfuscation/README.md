@@ -299,28 +299,6 @@ This module primarily addresses the **Detection** and **Response** phases of the
 *New techniques added: T1566, T1070.004, T1070.006.*
 
 
-### Essential Commands & Features
-
-When deobfuscating complex payloads, **CyberChef’s `Magic` operation** (T1140: *Deobfuscate/Decode Files or Information*) is invaluable for automating initial decoding steps. Unlike manual trial-and-error, `Magic` heuristically identifies and applies transformations (e.g., Base64, XOR, or URL encoding) to reveal hidden content. **Use it when:** You encounter layered obfuscation (e.g., a script encoded in Base64, then gzip-compressed). Example:
-```
-Input: "H4sIAAAAAAAAA+3OMQqAMAwF0N1TSGYX4g8J5BwkQ6BQJ5Q8J5BwkQ6BQJ5Q8J5BwkQ6BQJ5Q8J5BwkQ6BQJ5Q8J5BwkQ6BQJ5Q8AAAD//wMAAAAAAAAAAAA="
-Magic → Auto-detects gzip+Base64 → Output: "alert('Malicious payload');"
-```
-
-For **multi-step decoding**, chain operations using **`Fork`** (split input into parallel paths) and **`Merge`** (combine results). This is critical for techniques like T1027.002 (*Obfuscated Files or Information: Software Packing*), where payloads are split into fragments or encoded differently per segment. **Use it when:** A single input requires divergent decoding paths (e.g., one segment is hex-encoded, another is ROT13). Example:
-```
-Input: "726564|uryyb_jbeyq"
-1. Fork → Path 1: "726564" → From Hex → "red"
-2. Path 2: "uryyb_jbeyq" → ROT13 → "hello_world"
-3. Merge → Output: "red_hello_world"
-```
-
-**Pro Tip:** Combine `Magic` with `Fork` to handle hybrid obfuscation (e.g., `Magic` decodes the first layer, then `Fork` splits the result for further processing).
-
-**Sources:**
-- CyberChef Official Docs: [https://gchq.github.io/CyberChef/](https://gchq.github.io/CyberChef/)
-- MITRE ATT&CK: T1140 ([Deobfuscate/Decode Files or Information](https://attack.mitre.org/techniques/T1140/)), T1027.002 ([Obfuscated Files or Information: Software Packing](https://attack.mitre.org/techniques/T1027/002
-
 ### Threat Hunting & Detection Engineering
 
 Once deobfuscated, adversarial payloads often reveal patterns that can be hunted at scale. Focus on **T1105 Ingress Tool Transfer** and **T1573.001 Encrypted Channel: Symmetric Cryptography**—both frequently observed in post-deobfuscation command-and-control (C2) traffic.
@@ -339,34 +317,6 @@ Once deobfuscated, adversarial payloads often reveal patterns that can be hunted
 - [FireEye Threat Research: Detecting Obfuscated PowerShell in Command Lines](https://www.fireeye.com/blog/threat-research/2019/01/detecting-obfuscated-powershell-in-command-lines.html)
 
 
-### Essential Commands & Features
-
-When deobfuscating adversarial payloads, **CyberChef’s `Magic` operation** (T1140: *Deobfuscate/Decode Files or Information*) is indispensable for automated detection of encoding schemes. Unlike manual trial-and-error, `Magic` analyzes input data and applies a ranked list of operations (e.g., Base64, XOR, AES) to reveal plaintext. **Use it when:** You suspect multi-layered obfuscation (e.g., nested encodings) or lack initial context about the sample.
-
-**Example:**
-```plaintext
-Input: "54686520717569636B2062726F776E20666F78"
-Magic → Output: "The quick brown fox" (auto-detected as hex → ASCII)
-```
-
-For **parallel decoding chains**, leverage **`Fork` and `Merge`** to split input into multiple paths (e.g., testing Base64 *and* ROT13 simultaneously). **Use it when:** Facing polymorphic malware (T1027.010: *Obfuscated Files or Information*) where a single sample may use disparate encoding methods.
-
-**Example:**
-```plaintext
-Input: "SGVsbG8gV29ybGQh"
-Fork → Path 1: From_Base64 → Output: "Hello World!"
-Fork → Path 2: ROT13 → Output: "URyyB Jbeyq!"
-Merge → Compare results to identify valid decoding.
-```
-
-**Key Flags:**
-- `Magic`: Toggle "Recursive" to handle nested layers (e.g., Base64 → Gzip).
-- `Fork`: Right-click a node to "Add fork" and duplicate the input stream.
-
-**Sources:**
-- [CyberChef GitBook: Magic Operation](https://gchq.github.io/CyberChef/#Magic)
-- [MITRE ATT&CK: T1027.010](https://attack.mitre.org/techniques/T1027/010/)
-
 ### Adversary Emulation & Red-Team Perspective
 
 From an adversary’s standpoint, deobfuscation is not the end goal—it’s a means to execute malicious payloads undetected. Red teams and attackers leverage obfuscation to bypass static detection (e.g., AV signatures, YARA rules) while ensuring their code remains functional upon execution. A common tactic is **staged payload delivery** (MITRE ATT&CK [T1106](https://attack.mitre.org/techniques/T1106/): *Native API*), where obfuscated scripts (e.g., PowerShell, JavaScript) are decoded in memory using native OS functions like `Invoke-Expression` or `eval()`. This avoids writing deobfuscated artifacts to disk, reducing forensic traces.
@@ -382,17 +332,6 @@ Defenders should monitor for anomalous process trees (e.g., `cmd.exe` spawning `
 - [FireEye: Obfuscation in the Wild (2021)](https://www.fireeye.com/blog/threat-research/2021/03/obfuscation-in-the-wild.html)
 - [CERT-EU: PowerShell Obfuscation (2022)](https://cert.europa.eu/publications/security-advisories/2022-001)
 
-
-### Essential Commands & Features
-
-Beyond basic decode/encode, three underexploited features drastically accelerate deobfuscation. **CyberChef's "Magic" operation** (🪄) automatically identifies and applies the most likely decoding recipe for a blob. For example, paste `JRY7NZ2L4V6A====` (base32) into CyberChef, add Magic with default options, and it decodes to "HELLO". Use Magic during triage when the obfuscation method is unknown—it tests hundreds of recipes in seconds. **"Fork"** and **"Merge"** enable parallel decoding chains. Fork splits input into multiple parallel paths; Merge combines outputs. Run Fork with recipe "From Base64 → XOR Brute Force" on one branch and "From Base64 → Decode text" on another, then Merge to compare results. This is invaluable against multilayered encodings (e.g., `base64 → xor → base64`). **xortool's `-b` flag** brute‑forces all possible single-byte XOR keys and outputs the most plausible plaintext. Run `xortool -b -c 20` on a file to test keys where the most common byte appears 20% of the time (typical for English). Use `-b` when a file shows high entropy but no known repeating pattern, revealing simple XOR‑obfuscated payloads.
-
-These techniques directly counter real‑world adversary behaviors not yet covered in this module, including **T1027.005 (Indicator Removal from Tools)** — where attackers strip obvious strings and use XOR to hide IOCs — and **T1027.009 (Embedded Payloads)** — where encoded blobs are hidden inside legitimate files (e.g., LNK or macro). Both are common in phishing campaigns (T1566) and supply‑chain compromises.
-
-*Official CyberChef documentation:*  
-https://gchq.github.io/CyberCheF/  
-*xortool usage and `-b` flag:*  
-https://github.com/hellman/xortool
 
 ### Detection Guidance
 

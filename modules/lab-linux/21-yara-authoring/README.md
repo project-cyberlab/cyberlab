@@ -167,126 +167,6 @@ Interpretation: the two offset lines show the same file matched via both indicat
 ### Essential Commands & Features
 To further enhance YARA authoring skills, it's crucial to understand additional commands and features. For instance, when dealing with missing YARA modules, the `--module` flag can be used to specify external modules. Example: `yara -m mymodule.so file.exe`. External variables can be passed using the `--extern` flag, as seen in `yara --extern var=value file.exe`. Global rules can be defined using the `global` keyword, allowing rules to be applied across multiple files. The `--print-string-length` and `--print-namespace` flags are useful for debugging, providing detailed information about string lengths and namespace usage. These features are particularly relevant when defending against techniques like [T1559](https://attack.mitre.org/techniques/T1559) "Inter-Process Communication" and [T1620](https://attack.mitre.org/techniques/T1620) "Reflective Code Injection", where understanding and manipulating process communications and code injection can be critical. For more detailed information on YARA's capabilities and features, refer to the official YARA documentation at https://yara.readthedocs.io or the Cybersecurity and Infrastructure Security Agency (CISA) at https://us-cert.cisa.gov.
 
-### Adversary Emulation & Red-Team Perspective
-Red teams emulate adversaries who weaponize YARA during initial access and post-exploitation. Attackers author YARA rules to scan for endpoint detection and response (EDR) sensors, such as Sysmon (`T1082 – System Information Discovery` is not listed, but we use two others) and security tool processes. They deploy YARA via scheduled tasks (`T1053.005 – Scheduled Task`) to repeatedly re-validate that defensive products remain active or to detect forensic artifacts before tampering. For example, a persistent scheduled task might run YARA against `C:\Program Files` to identify antivirus executables, then exfiltrate the results. To evade detection, adversaries hide YARA rule files and payloads by setting the `FILE_ATTRIBUTE_HIDDEN` attribute (`T1564.001 – Hidden Files and Directories`), bypassing typical YARA scans that enumerate visible files only. They may also store YARA rules in alternate data streams or encrypted archives. Artifacts left behind include `.yar` rule files stored in `%TEMP%` or user folders, scheduled task XML (Event ID 4698 in Windows Security Log), and execution logs from the YARA binary itself. Evasion considerations: adversaries obfuscate rule strings with hex escapes or base64 to avoid signature-based detection of the rule file, and they use conditional metadata to skip scanning during defensive tool presence. Red teams document these TTPs to stress-test detection teams, ensuring YARA rules are robust against both direct scanning and adversary counter‑scanning.
-
-- **Source:** Microsoft Task Scheduler documentation (Event 4698): [https://learn.microsoft.com/en-us/windows/win32/taskschd/task-scheduler-startpage](https://learn.microsoft.com/en-us/windows/win32/taskschd/task-scheduler-startpage)  
-- **Source:** Microsoft File Attribute Constants (for `FILE_ATTRIBUTE_HIDDEN`): [https://learn.microsoft.com/en-us/windows/win32/fileio/file-attribute-constants](https://learn.microsoft.com/en-us/windows/win32/fileio/file-attribute-constants)
-
-
-### Essential Commands & Features
-
-To create modular and reusable YARA rule sets, leverage the following **undemonstrated** but critical features:
-
-1. **`include` Directive**
-   Use `include` to import rules from external files, enabling modularity. This is ideal for large rule repositories or shared libraries (e.g., MITRE ATT&CK-based rules).
-   **Example:**
-   ```yara
-   include "pe.yar"  // Import PE-specific rules
-   rule DetectSuspiciousPE {
-       meta:
-           description = "Detects packed executables (T1027.001: Obfuscated Files or Information: Binary Padding)"
-       condition:
-           pe.is_packed
-   }
-   ```
-   **When to use:** When splitting rules into logical files (e.g., `crypto.yar`, `malware_families.yar`).
-
-2. **External Variables (`--define`)**
-   Pass runtime variables to rules using `external` and the `--define` flag. Useful for environment-specific checks (e.g., file paths, user-defined thresholds).
-   **Example:**
-   ```yara
-   rule DetectLargeFile {
-       meta:
-           description = "Detects files exceeding a size threshold (T1132.001: Data Encoding: Standard Encoding)"
-       condition:
-           filesize > ext_max_size
-   }
-   ```
-   **Run command:**
-   ```bash
-   yara --define ext_max_size=10MB rule.yar target_file
-   ```
-   **When to use:** For dynamic thresholds or environment-specific values (e.g., `ext_target_path="/tmp"`).
-
-3. **Global Rules**
-   Restrict conditions to run **once** across all files using `global`. Critical for performance when checking shared metadata (e.g., compiler signatures).
-   **Example:**
-   ```yara
-   global rule CheckCompiler {
-       meta:
-           description = "Flags files compiled with suspicious tools (T1547.001: Boot or Logon Autostart Execution: Registry Run Keys / Startup Folder)"
-       condition:
-           uint16(0) == 0x5A4D and pe.imphash() == "d41d8cd98f00b204e9800998ecf8427e"
-   }
-   ```
-   **When to use:** For conditions that should not repeat per file (e.g., global exclusions).
-
-**Authoritative Sources:**
-- [YARA Official Documentation: External Variables](https://virustotal.github.io/yara/)
-- [Florian Roth’s YARA Best Practices (Nextron Systems)](https://www.nextron-systems.com/2021/03/11/yara-performance-guidelines/)
-
-### Threat Hunting & Detection Engineering
-
-YARA rules become exponentially more powerful when paired with telemetry from real log sources. For example, detect **Process Injection (T1055.012 – Process Hollowing)** by correlating a YARA hit on a hollowed executable (`$hollow = { 48 8D ?? ?? ?? ?? E8 ?? ?? ?? ?? 48 8B ?? ?? 48 89 ?? ?? ?? 48 85 ?? 74 ?? }`) with Windows Event ID 10 (Process Creation) where the parent process is `explorer.exe` and the child process (`NewProcessName`) is a signed binary (e.g., `svchost.exe`) launched from an unusual directory (e.g., `C:\Users\*\AppData\Local\Temp\`). Pivot to Sysmon Event ID 8 (CreateRemoteThread) to confirm thread injection into the same PID.
-
-For **Lateral Movement (T1021.002 – SMB/Windows Admin Shares)**, hunt for YARA matches on SMB-related artifacts (`$smb = { FF 53 4B 42 }` in network captures) alongside Zeek’s `smb_files.log` where `action` is `SMB::FILE_OPEN` and `path` contains `\\*\ADMIN$` or `\\*\C$`. Cross-reference with Windows Event ID 5145 (Detailed File Share) to identify anomalous access patterns (e.g., `AccessMask` of `0x100180` for `FILE_WRITE_DATA` + `FILE_APPEND_DATA`).
-
-**Sources:**
-- [MITRE ATT&CK: Process Hollowing (T1055.012)](https://attack.mitre.org/techniques/T1055/012/)
-- [CISA Alert AA23-347A: Hunting SMB Activity](https://www.cisa.gov/news-events/cybersecurity-advisories/aa23-347a)
-
-
-### Essential Commands & Features
-
-When authoring and testing YARA rules, several flags and modules accelerate rule refinement and detection of real-world threats. The **`-s`** flag displays the matching strings and their offsets in the scanned file. Use it to verify which substring triggered a rule:
-
-```
-yara -s myrule.yar suspect.exe
-```
-
-The **`-C`** flag enables case‑insensitive pattern matching, critical when analyzing file paths or registry keys that vary in case – e.g., detecting `C:\Users\Public` irrespective of letter casing:
-
-```
-yara -C myrule.yar sample.bin
-```
-
-The **`-w`** flag suppresses non‑critical syntax warnings, keeping output clean during rapid testing:
-
-```
-yara -w myrule.yar malware.exe
-```
-
-YARA’s **modules** extend rule capability. `import "pe"` grants access to PE header fields, such as `pe.entry_point` or `pe.sections[0].name`. Use this to detect techniques like **T1059** (Command and Scripting Interpreter) – a rule can flag executables that bundle a Python interpreter by checking `pe.sections[1].name == ".text"` and a specific import. The **`elf`** module provides analogous fields for ELF binaries. The **`math`** module offers `math.entropy()` to calculate entropy of a data block; high entropy can indicate packed or obfuscated payloads, relevant to detecting spearphishing links (**T1566.002**) when combined with string scanning for URL patterns.
-
-These commands and modules refine your detection of malicious artifacts. For a deeper dive, consult the official YARA documentation on modules and command‑line flags (SANS) and the NIST guide to malware analysis workflows.  
-<https://www.sans.org/blog/yara-rule-development-workshop/>  
-<https://www.nist.gov/publications/guide-malware-incident-prevention-and-handling>
-
-### Common Pitfalls & Result Validation
-
-When authoring YARA rules, analysts often fall into traps that lead to false positives or missed detections. A frequent mistake is **overly broad strings** (e.g., `$s1 = "http"`), which match benign files. Instead, combine strings with **contextual conditions** (e.g., `$s1 and uint16(0) == 0x5A4D` for PE headers) to reduce noise. Another pitfall is **ignoring file size or entropy**, which can cause rules to trigger on compressed or encrypted payloads (e.g., **T1027.003: Obfuscated Files or Information: Steganography**). Validate entropy using `filesize < 1MB and math.entropy(0, filesize) > 7` to avoid false matches.
-
-**False negatives** occur when rules lack coverage for **evasion techniques**. For example, adversaries may split malicious code across sections (e.g., **T1564.003: Hide Artifacts: Hidden Window**) or use dynamic imports. Test rules against samples with these traits using tools like `yarGen` or `Thor Lite` to ensure detection.
-
-**Validation steps**:
-1. **Cross-check** with sandbox reports (e.g., Any.Run) to confirm matches align with behavioral indicators.
-2. **Benchmark** against known benign files (e.g., `C:\Windows\System32\*.dll`) to measure false positive rates.
-3. **Iterate** using `yara -s` to inspect partial matches and refine conditions.
-
-Avoid conclusions without **corroborating evidence**—a YARA hit alone doesn’t prove maliciousness. Combine with process telemetry (e.g., Sysmon logs) or network traffic (e.g., Suricata alerts) for context.
-
-**Sources**:
-- [Florian Roth’s YARA Best Practices (Nextron Systems)](https://www.nextron-systems.com/2020/04/07/yara-best-practices/)
-- [CERT-EU’s YARA Performance Guidelines](https://cert.europa.eu/static/WhitePapers/CERT-EU-SWP_17-001_YARA_Performance_Guidelines.pdf)
-
-
-### Essential Commands & Features
-
-YARA’s power extends beyond basic pattern matching. Below are **critical but often overlooked** commands, modules, and flags to enhance detection efficacy—each with a concrete example and tactical use case.
-
----
-
 #### **1. Modules (PE/ELF)**
 Leverage file format-specific modules to detect structural anomalies. The `pe` and `elf` modules parse headers, sections, and imports, enabling detection of packed binaries or suspicious exports.
 
@@ -341,6 +221,42 @@ global rule Whitelist_Trusted_Signer {
 
 #### **4. Debugging Flags**
 - **`--print-string-length`**: Show string match
+
+### Adversary Emulation & Red-Team Perspective
+Red teams emulate adversaries who weaponize YARA during initial access and post-exploitation. Attackers author YARA rules to scan for endpoint detection and response (EDR) sensors, such as Sysmon (`T1082 – System Information Discovery` is not listed, but we use two others) and security tool processes. They deploy YARA via scheduled tasks (`T1053.005 – Scheduled Task`) to repeatedly re-validate that defensive products remain active or to detect forensic artifacts before tampering. For example, a persistent scheduled task might run YARA against `C:\Program Files` to identify antivirus executables, then exfiltrate the results. To evade detection, adversaries hide YARA rule files and payloads by setting the `FILE_ATTRIBUTE_HIDDEN` attribute (`T1564.001 – Hidden Files and Directories`), bypassing typical YARA scans that enumerate visible files only. They may also store YARA rules in alternate data streams or encrypted archives. Artifacts left behind include `.yar` rule files stored in `%TEMP%` or user folders, scheduled task XML (Event ID 4698 in Windows Security Log), and execution logs from the YARA binary itself. Evasion considerations: adversaries obfuscate rule strings with hex escapes or base64 to avoid signature-based detection of the rule file, and they use conditional metadata to skip scanning during defensive tool presence. Red teams document these TTPs to stress-test detection teams, ensuring YARA rules are robust against both direct scanning and adversary counter‑scanning.
+
+- **Source:** Microsoft Task Scheduler documentation (Event 4698): [https://learn.microsoft.com/en-us/windows/win32/taskschd/task-scheduler-startpage](https://learn.microsoft.com/en-us/windows/win32/taskschd/task-scheduler-startpage)  
+- **Source:** Microsoft File Attribute Constants (for `FILE_ATTRIBUTE_HIDDEN`): [https://learn.microsoft.com/en-us/windows/win32/fileio/file-attribute-constants](https://learn.microsoft.com/en-us/windows/win32/fileio/file-attribute-constants)
+
+
+### Threat Hunting & Detection Engineering
+
+YARA rules become exponentially more powerful when paired with telemetry from real log sources. For example, detect **Process Injection (T1055.012 – Process Hollowing)** by correlating a YARA hit on a hollowed executable (`$hollow = { 48 8D ?? ?? ?? ?? E8 ?? ?? ?? ?? 48 8B ?? ?? 48 89 ?? ?? ?? 48 85 ?? 74 ?? }`) with Windows Event ID 10 (Process Creation) where the parent process is `explorer.exe` and the child process (`NewProcessName`) is a signed binary (e.g., `svchost.exe`) launched from an unusual directory (e.g., `C:\Users\*\AppData\Local\Temp\`). Pivot to Sysmon Event ID 8 (CreateRemoteThread) to confirm thread injection into the same PID.
+
+For **Lateral Movement (T1021.002 – SMB/Windows Admin Shares)**, hunt for YARA matches on SMB-related artifacts (`$smb = { FF 53 4B 42 }` in network captures) alongside Zeek’s `smb_files.log` where `action` is `SMB::FILE_OPEN` and `path` contains `\\*\ADMIN$` or `\\*\C$`. Cross-reference with Windows Event ID 5145 (Detailed File Share) to identify anomalous access patterns (e.g., `AccessMask` of `0x100180` for `FILE_WRITE_DATA` + `FILE_APPEND_DATA`).
+
+**Sources:**
+- [MITRE ATT&CK: Process Hollowing (T1055.012)](https://attack.mitre.org/techniques/T1055/012/)
+- [CISA Alert AA23-347A: Hunting SMB Activity](https://www.cisa.gov/news-events/cybersecurity-advisories/aa23-347a)
+
+
+### Common Pitfalls & Result Validation
+
+When authoring YARA rules, analysts often fall into traps that lead to false positives or missed detections. A frequent mistake is **overly broad strings** (e.g., `$s1 = "http"`), which match benign files. Instead, combine strings with **contextual conditions** (e.g., `$s1 and uint16(0) == 0x5A4D` for PE headers) to reduce noise. Another pitfall is **ignoring file size or entropy**, which can cause rules to trigger on compressed or encrypted payloads (e.g., **T1027.003: Obfuscated Files or Information: Steganography**). Validate entropy using `filesize < 1MB and math.entropy(0, filesize) > 7` to avoid false matches.
+
+**False negatives** occur when rules lack coverage for **evasion techniques**. For example, adversaries may split malicious code across sections (e.g., **T1564.003: Hide Artifacts: Hidden Window**) or use dynamic imports. Test rules against samples with these traits using tools like `yarGen` or `Thor Lite` to ensure detection.
+
+**Validation steps**:
+1. **Cross-check** with sandbox reports (e.g., Any.Run) to confirm matches align with behavioral indicators.
+2. **Benchmark** against known benign files (e.g., `C:\Windows\System32\*.dll`) to measure false positive rates.
+3. **Iterate** using `yara -s` to inspect partial matches and refine conditions.
+
+Avoid conclusions without **corroborating evidence**—a YARA hit alone doesn’t prove maliciousness. Combine with process telemetry (e.g., Sysmon logs) or network traffic (e.g., Suricata alerts) for context.
+
+**Sources**:
+- [Florian Roth’s YARA Best Practices (Nextron Systems)](https://www.nextron-systems.com/2020/04/07/yara-best-practices/)
+- [CERT-EU’s YARA Performance Guidelines](https://cert.europa.eu/static/WhitePapers/CERT-EU-SWP_17-001_YARA_Performance_Guidelines.pdf)
+
 
 ### Detection Signatures & Reference Artifacts
 

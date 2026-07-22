@@ -328,25 +328,6 @@ For T1059.006, detect Python scripts executing base64-encoded commands via `pyth
 - [Sysmon for Linux (Microsoft Threat Intelligence)](https://www.microsoft.com/en-us/security/blog/2021/08/10/sysmon-for-linux-now-available-for-public-preview/)
 
 
-### Essential Commands & Features  
-For full forensic recovery and slack-space analysis, The Sleuth Kit (TSK) provides three underutilized commands. `tsk_recover` extracts all allocated files from a disk image to a directory, preserving metadata. Use it when you need a complete, organized file export without manually carving each item:  
-```bash  
-tsk_recover -o 2048 disk.dd /recovered_files  
-```  
-`blkls` lists the block (sector) data of a volume, and with the `-s` flag outputs only slack space bytes – the unused portion of a block after a file ends. Adversaries may hide data here to evade detection. Examine slack with:  
-```bash  
-blkls -s disk.dd > slack_dump.bin  
-```  
-`blkcalc` correlates a block address from `blkls` output (or a raw offset) to its logical file system block number. Use it to pinpoint where a suspicious byte sequence resides within a file or slack space:  
-```bash  
-blkcalc -u 12345 disk.dd  
-```  
-This trio supports detection of techniques like **T1048 (Exfiltration Over Alternative Protocol)** when hidden data is later retrieved, and **T1202 (Indicator Removal from Tools)** if slack space is used to discard tool artifacts.  
-
-**Additional Resources:**  
-- TSK man pages on linux.die.net: [blkls](https://linux.die.net/man/1/blkls), [tsk_recover](https://linux.die.net/man/1/tsk_recover)  
-- Forensic Focus, “Slack Space Forensics”: [link](https://www.forensicfocus.com/articles/slack-space-forensics/)
-
 ### Detection Signatures & Reference Artifacts
 
 Real, community-maintained detection rules for this topic (defensive use only). The reference artifacts at the end are BENIGN, illustrative lab values -- not live indicators.
@@ -436,38 +417,6 @@ rule APT_MAL_WinntiLinux_Dropper_AzazelFork_May19 : azazel_fork {
 | sample sha256 | `b22a4f30620e79ed2adceda9d58d8ad44f78208c72e9bfb35a5f2bf5d79779ab` |
 | reproduce sample | a text file containing exactly: 'cyberlab benign training sample -- module 51-linux-triage-workflow -- for detection-rule testing only
 ' |
-### Essential Commands & Features
-
-When triaging Linux systems, **The Sleuth Kit (TSK)** provides powerful block-level analysis capabilities that are critical for uncovering hidden artifacts. Below are three **undemonstrated but essential** commands for deep forensic inspection:
-
-1. **`blkcat` – Extract Raw Block Data**
-   Use to dump the contents of a specific disk block, ideal for recovering deleted files or examining slack space.
-   **Example:**
-   ```bash
-   blkcat -o 2048 /dev/sdb 12345 > block_12345.raw
-   ```
-   *When to use:* Investigate **T1074.001 (Data Staged)** or **T1560.001 (Archive Collected Data)** where adversaries hide data in unallocated blocks.
-
-2. **`blkls` – List/Extract Unallocated Blocks**
-   Extracts all unallocated blocks (slack space) for offline analysis, revealing remnants of deleted files.
-   **Example:**
-   ```bash
-   blkls -o 2048 /dev/sdb > unallocated_blocks.raw
-   ```
-   *When to use:* Detect **T1070.004 (File Deletion)** or **T1485 (Data Destruction)** where attackers attempt to cover tracks.
-
-3. **`hfind` – Hash Lookup (NSRL/Hash Sets)**
-   Quickly checks if a file hash exists in a known-good database (e.g., NSRL) or custom hash sets.
-   **Example:**
-   ```bash
-   hfind -i nsrl-md5 /path/to/hashes.txt 098f6bcd4621d373cade4e832627b4f6
-   ```
-   *When to use:* Identify **T1140 (Deobfuscate/Decode Files or Information)** or **T1204.002 (Malicious File)** by filtering known-good files.
-
-**Sources:**
-- [TSK Official Documentation: `blkcat`, `blkls`, `hfind`](https://www.sleuthkit.org/sleuthkit/man/)
-- [DFIR Review: Slack Space Analysis](https://www.dfir.review/)
-
 ### Adversary Emulation & Red-Team Perspective
 
 From an attacker’s perspective, Linux triage workflows present opportunities to evade detection, maintain persistence, and exfiltrate data. Adversaries often **abuse legitimate system tools** to blend in with normal activity, leveraging **Living-off-the-Land Binaries (LOLBins)** to execute malicious actions. For example, an attacker may use `curl` or `wget` to download additional payloads (**[T1105: Ingress Tool Transfer](https://attack.mitre.org/techniques/T1105/)**), disguising traffic as routine updates. They may also **obfuscate scripts** using `base64` encoding or compression (e.g., `gzip`) to bypass signature-based detection (**[T1027.010: Obfuscated Files or Information: Encrypted/Encoded File](https://attack.mitre.org/techniques/T1027/010/)**).

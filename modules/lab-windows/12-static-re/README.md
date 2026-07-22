@@ -253,40 +253,6 @@ Red teams emulate these TTPs to test defenses, often combining static RE with dy
 - [FireEye: TrickBot Malware Analysis (2021)](https://www.fireeye.com/blog/threat-research/2021/04/trickbot-malware-analysis.html)
 
 
-### Essential Commands & Features
-
-- **Missing Auto-Analysis & Manual Triggering**: When Ghidra’s initial analysis skips sections (e.g., packed code), re-run specific analyzers via `analyzeHeadless -postScript RunAllAnalyzers.java`.  
-  *Example*: `analyzeHeadless /tmp/out -import sample.exe -postScript RunAllAnalyzers.java`  
-  *When to use*: After unpacking a binary (or adding a new processor module) to reveal hidden imports and functions, aiding detection of **T1059.001** (Command and Scripting Interpreter: PowerShell) via overlooked string references.
-
-- **Patching (Binary Modification)**: Use `PatchInstruction` (right-click in Listing) or scripting: `clearCodeUnitAt(addr); setByte(addr, 0x90)` to NOP a check.  
-  *Example*: In a Python script:  
-  ```python  
-  from ghidra.program.model.listing import CodeUnit  
-  addr = toAddr(0x401000)  
-  currentProgram.getListing().clearCodeUnitAt(addr)  
-  setByte(addr, 0x90)  
-  ```  
-  *When to use*: Bypass anti-debug calls; modify import table entries to enable **T1574.002** (DLL Side-Loading) by redirecting a DLL load.
-
-- **Python Scripting for Automation**: Ghidra’s Jython (2.7) lets you inspect & automate.  
-  *Example*: List all calls to `CreateProcess` to spot process creation—relevant to detecting **T1059.001** (PowerShell) or **T1218.010** (Regsvr32):  
-  ```python  
-  fm = currentProgram.getFunctionManager()  
-  for func in fm.getFunctions(True):  
-      if 'Regsvr32' in func.getName():  
-          print("Potential Regsvr32 execution at", func.getEntryPoint())  
-  ```  
-  *When to use*: Batch‑analyze samples for indicators of known living‑off‑the‑land binaries (LOLBins).
-
-- **Function Signature/FLIRT Usage**: Apply the `FunctionID` analyzer to match statically linked libraries.  
-  *Example*: `analyzeHeadless /tmp/out -import sample.exe -postScript ApplyFidScript.java`  
-  *When to use*: Identify embedded library code (e.g., OpenSSL), which can aid attribution; uncovers architecture‑specific calls that may be abused for **T1574.002** (DLL Side-Loading) when the binary references `kernel32.dll` or `ole32.dll`.
-
-**Sources**:  
-- Ghidra Headless Mode Documentation: [https://ghidra.re/ghidra_docs/analyzeHeadlessREADME.html](https://ghidra.re/ghidra_docs/analyzeHeadlessREADME.html)  
-- SANS Ghidra Cheat Sheet (Scripting & Patching): [https://www.sans.org/blog/ghidra-cheat-sheet/](https://www.sans.org/blog/ghidra-cheat-sheet/)
-
 ### Common Pitfalls & Result Validation
 
 When performing static reverse engineering, analysts often fall into traps that lead to false conclusions or wasted time. A frequent mistake is **overlooking compiler optimizations** (e.g., dead code elimination or inlining), which can obscure malicious logic or mislead control-flow analysis. For example, **T1027.006: HTML Smuggling** may embed payloads in seemingly benign JavaScript, but aggressive minification can make manual inspection unreliable—always cross-validate with dynamic analysis or deobfuscation tools like *de4js*.
@@ -302,44 +268,6 @@ To avoid false positives, **triangulate static findings with dynamic tools** (e.
 - [MITRE ATT&CK: T1027.006](https://attack.mitre.org/techniques/T1027/006/)
 - [CERT-EU: Static Analysis Pitfalls in Malware RE](https://cert.europa.eu/static/WhitePapers/CERT-EU-SWP_17_001.pdf)
 
-
-### Essential Commands & Features
-
-Ghidra’s **auto-analysis** (`Analysis > Auto Analyze`) is critical for uncovering obfuscated strings or API calls (e.g., **T1027.007: Obfuscated Files or Information: Dynamic API Resolution**). To re-run it with custom settings:
-```bash
-# Launch Ghidra headless, re-analyze with aggressive decompilation
-analyzeHeadless /path/to/project ProjectName -process binary.exe -noanalysis -scriptPath /scripts -postScript ReanalyzeWithAggressiveDecompiler.java
-```
-Use this when initial analysis misses indirect jumps or obfuscated control flow.
-
-For **patching** (e.g., **T1562.003: Impair Defenses: Disable or Modify Tools**), right-click in the Listing view, select `Patch Instruction`, and modify bytes directly. Commit changes via `File > Export Program` (select "Binary" format). Example:
-```bash
-# Patch a JMP to NOP (0x90) at address 0x00401000
-PatchInstruction 0x00401000 0x90
-```
-Use patching to neutralize anti-analysis checks or modify hardcoded C2 domains.
-
-Ghidra’s **Python scripting** (via `Window > Script Manager`) automates repetitive tasks. For example, extract all cross-references to `LoadLibraryA` (common in **T1106: Native API**):
-```python
-# Find all calls to LoadLibraryA and print their contexts
-for ref in currentProgram.getReferenceManager().getReferencesTo(toAddr("LoadLibraryA")):
-    print(f"Found reference at {ref.getFromAddress()}")
-```
-Scripting is ideal for bulk analysis or custom deobfuscation.
-
-For **FLOSS**, the `--only-stacks` and `--only-static` flags isolate stack strings or static strings, respectively, reducing noise:
-```bash
-# Extract only stack strings (useful for shellcode analysis)
-floss --only-stacks malware.bin
-
-# Extract only static strings (useful for embedded config data)
-floss --only-static malware.bin
-```
-Use these flags when analyzing **T1059.003: Command and Scripting Interpreter: Windows Command Shell** payloads or **T1140: Deobfuscate/Decode Files or Information**.
-
-**Sources**:
-- [Ghidra Scripting Guide (NSA)](https://ghidra.re/ghidra_docs/api/ghidra/app/script/GhidraScript.html)
-- [FLOSS Documentation (FireEye)](https://github.com/fireeye/flare-floss)
 
 ### Detection Signatures & Reference Artifacts
 
