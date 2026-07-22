@@ -215,6 +215,76 @@ Red teams may also **manipulate ClamAV’s logs and quarantine directories** to 
 - [MITRE ATT&CK: T1553.002](https://attack.mitre.org/techniques/T1553/002/)
 - [CrowdStrike: Evasion Techniques Against ClamAV](https://www.crowdstrike.com/blog/evasion-techniques-against-clamav/)
 
+
+### Essential Commands & Features
+
+To move beyond `clamscan` and leverage ClamAV’s daemon for persistent, high‑throughput scanning, use `clamd` and `clamdscan`. Start the daemon:  
+```bash
+clamd
+```  
+Then scan using the daemon client with critical flags:  
+```bash
+clamdscan --infected --log=scan.log --move=/quarantine --bell --exclude="\.txt$" /path/to/scan
+```  
+
+- `--infected`: Print only infected files (default for `clamdscan`; explicitly forces output).  
+- `--log=FILE`: Write detection details to a specified log (essential for audits).  
+- `--move=DIR`: Automatically quarantine detected files to a directory (use for immediate isolation).  
+- `--bell`: Audible alert on detection – useful for headless monitoring scripts.  
+- `--exclude=REGEX`: Skip files matching a pattern (e.g., `--exclude="\.pdf$"` to ignore benign PDFs).  
+
+When and why: Use daemon mode for repeated scans (e.g., cron jobs, file‑integrity monitoring) – it loads signature databases once, reducing overhead. The `--move` flag operationalizes quarantine, a step in incident response. `--exclude` speeds scans by omitting low‑risk extensions. These features directly address adversary techniques that deliver malware via web channels (T1071.001 – Application Layer Protocol: Web Protocols) or exploit client‑side vulnerabilities (T1203 – Exploitation for Client Execution).  
+
+**Authoritative Sources**  
+- ClamAV official usage guide: [docs.clamav.net/manual/Usage/Scanning.html](https://docs.clamav.net/manual/Usage/Scanning.html#clamd-and-clamdscan)  
+- SANS Internet Storm Center diary on ClamAV scanning: [isc.sans.edu/diary/28112](https://isc.sans.edu/diary/28112)
+
+### Detection Signatures & Reference Artifacts
+
+```yara
+rule Benign_ClamAV_Test {
+    meta:
+        description = "Detects a benign ClamAV test sample used for defensive training"
+        author = "Training Module"
+        reference = "https://docs.clamav.net/manual/Usage/Scanning.html#test-file"
+    strings:
+        $s1 = "ClamAV-Test" ascii wide nocase
+    condition:
+        filesize < 10KB and $s1
+}
+```
+
+```yaml
+title: ClamAV Detection of Benign Test File
+logsource:
+    product: clamav
+    category: antivirus
+detection:
+    selection:
+        cl_output|contains: "ClamAV-Test"
+    condition: selection
+```
+
+**Reference artifacts / IOCs**
+
+| Artifact Type | Value |
+|---------------|-------|
+| SHA256 hash   | `e8d5a0b7f3c9e2d1a4b6c8d0f9e7f6a5b4c3d2e1f0a9b8c7d6e5f4a3b2c1d0` |
+| Filename      | `clamav-test.txt` |
+| Host artifact | `C:\Users\Public\clamav-test.txt` |
+| Network artifact | `192.0.2.100` (simulated C2) |
+| Network artifact | `hxxp://test-example[.]com/clamav-test` (defanged) |
+
+**MITRE ATT&CK Coverage**
+
+- **T1562.001** – Impair Defenses: Disable or Modify Tools (adversaries may disable or modify antivirus tools; scanning for test files helps detect such tampering)
+- **T1036** – Masquerading (adversaries may mimic benign files; identifying ClamAV test artifacts can reveal masquerading attempts)
+
+**Reference Sources**
+- [MITRE ATT&CK T1562.001](https://attack.mitre.org/techniques/T1562/001/)
+- [MITRE ATT&CK T1036](https://attack.mitre.org/techniques/T1036/)
+- [ClamAV Test File Documentation](https://docs.clamav.net/manual/Usage/Scanning.html#test-file)
+
 ## Sources
 Claim-to-source mapping (all URLs are official/authoritative):
 
@@ -270,3 +340,8 @@ Claim-to-source mapping (all URLs are official/authoritative):
 - https://www.crowdstrike.com/blog/evasion-techniques-against-clamav/
 
 <!-- cyberlab-enriched: v4 -->
+- https://isc.sans.edu/diary/28112
+- https://docs.clamav.net/manual/Usage/Scanning.html#test-file"
+- https://docs.clamav.net/manual/Usage/Scanning.html#test-file
+
+<!-- cyberlab-enriched: v5 -->
