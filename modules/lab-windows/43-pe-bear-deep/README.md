@@ -32,37 +32,40 @@ Get-ChildItem "C:\Tools" -Recurse -Filter "die.exe" -ErrorAction SilentlyContinu
 Note: FLARE-VM installs tools via Chocolatey packages and creates Start Menu / Desktop shortcuts; exact on-disk paths under `C:\Tools` can vary by package version, so the recursive search above is the reliable way to locate the binaries ([github.com/mandiant/flare-vm](https://github.com/mandiant/flare-vm)). The DIE distribution ships both `die.exe` (GUI) and `diec.exe` (console); the walkthrough uses `diec.exe` for terminal-friendly output ([github.com/horsicq/Detect-It-Easy](https://github.com/horsicq/Detect-It-Easy)).
 
 ## Guided walkthrough
+
 1. Generate a clean baseline sample to compare against later.
 ```powershell
-# Copy a known-good system binary to a working folder for analysis
+
 New-Item -ItemType Directory -Force -Path C:\work\pe-lab | Out-Null
 Copy-Item C:\Windows\System32\calc.exe C:\work\pe-lab\clean.exe
 Get-FileHash C:\work\pe-lab\clean.exe -Algorithm SHA256
-# Expected output: a SHA256 line for clean.exe (value depends on OS build).
+
 ```
 Why: a Microsoft-signed system binary is a trustworthy "known-good" reference, so any structural difference you later see in the packed sample stands out. Note that on Windows 10/11 `C:\Windows\System32\calc.exe` is a small launcher stub that starts the Store Calculator app rather than the classic calculator — that is fine here because we only care about its PE structure, not its behavior. `Get-FileHash` computes a SHA256 digest per Microsoft Learn's documented default/`-Algorithm` behavior ([learn.microsoft.com Get-FileHash](https://learn.microsoft.com/en-us/powershell/module/microsoft.powershell.utility/get-filehash)).
 
 2. Open `clean.exe` in PE-bear and inspect the DOS header, NT headers, and section table. Note the "Characteristics" flags and the `TimeDateStamp`.
 ```powershell
-# Launch PE-bear against the file (adjust path if your FLARE-VM install differs)
+
 & "C:\Tools\PE-bear\PE-bear.exe" C:\work\pe-lab\clean.exe
-# Expected: GUI opens; left pane shows DOS Hdr, NT Hdrs, Section Hdrs, Imports.
-# Observe .text, .data, .rdata sections with sane Raw/Virtual sizes and a large Import table.
+
+
 ```
-Why: the DOS header begins with the `MZ` magic (`0x5A4D`) and its `e_lfanew` field points to the PE header; the NT headers hold the COFF `FileHeader` (with `TimeDateStamp` and `Characteristics`) and the `OptionalHeader` (entry point, image base, data directories). These field definitions are from Microsoft's PE format spec ([learn.microsoft.com PE Format](https://learn.microsoft.com/en-us/windows/win32/debug/pe-format)). Nuance: `TimeDateStamp` is a 32-bit epoch value the linker writes and is trivially forgeable, so treat it as a lead, not proof. A benign compiler-produced binary shows conventional section names (`.text`, `.rdata`, `.data`, `.rsrc`) whose `Characteristics` flags match their role — `.text` is `MEM_EXECUTE|MEM_READ` and normally NOT writable; a section that is simultaneously writable and executable is a classic packer/self-modifying-code tell ([learn.microsoft.com PE Format — Section Flags](https://learn.microsoft.com/en-us/windows/win32/debug/pe-format#section-flags)).
+Why: the DOS header begins with the `MZ` magic (`0x5A4D`) and its `e_lfanew` field points to the PE header; the NT headers hold the COFF `FileHeader` (with `TimeDateStamp` and `Characteristics`) and the `OptionalHeader` (entry point, image base, data directories). These field definitions are from Microsoft's PE format spec ([learn.microsoft.com PE Format](https://learn.microsoft.com/en-us/windows/win32/debug/pe-format)). Nuance: `TimeDateStamp` is a 32-bit epoch value the linker writes and is trivially forgeable, so treat it as a lead, not proof. Attackers may also set a constant timestamp (e.g., `0x00000000` or a fixed value like `0x4A5B6C7D`) to avoid revealing the true compilation time, a form of Indicator Removal (MITRE ATT&CK T1070.006) ([attack.mitre.org T1070.006](https://attack.mitre.org/techniques/T1070/006/)). A benign compiler-produced binary shows conventional section names (`.text`, `.rdata`, `.data`, `.rsrc`) whose `Characteristics` flags match their role — `.text` is `MEM_EXECUTE|MEM_READ` and normally NOT writable; a section that is simultaneously writable and executable is a classic packer/self-modifying-code tell ([learn.microsoft.com PE Format — Section Flags](https://learn.microsoft.com/en-us/windows/win32/debug/pe-format#section-flags)).
 
 3. Run Detect-It-Easy on the same file to confirm the compiler and view entropy.
 ```powershell
-# DIE console scan; low overall entropy is expected for an unpacked binary
+
 & "C:\Tools\die\diec.exe" C:\work\pe-lab\clean.exe
-# Expected output: identifies "Linker: Microsoft Linker" / "Compiler: Microsoft Visual C/C++"
-# and reports low overall entropy for a normal system binary (not packed).
+
+
 ```
 Why: DIE matches the file against its signature database to name the compiler/linker and any known packer, and it can compute Shannon entropy per section. Interpretation nuance: entropy is measured on a 0–8 scale (bits per byte); ordinary code/data sits well below 8, while compressed or encrypted content approaches 8. DIE flags sections it considers "packed" when entropy is high (a commonly cited threshold near ~7.0) ([github.com/horsicq/Detect-It-Easy](https://github.com/horsicq/Detect-It-Easy)). To print an entropy report explicitly, use the `-e` / entropy option documented by the project. (Earlier drafts of this module used `diec.exe -j`; the console front-end's exact flags vary by release, so run `diec.exe --help` to confirm the JSON/entropy switches for your installed version.)
 
 4. Compare imports: a clean binary imports many named APIs; a packed one often shows only `LoadLibrary`/`GetProcAddress`. In PE-bear, click **Imports** and count the DLLs and functions.
 
 Why: the Import Address Table (IAT) is described in the PE data directories; a normal program statically lists the DLLs and named functions it needs so the loader can resolve them ([learn.microsoft.com PE Format — The .idata Section](https://learn.microsoft.com/en-us/windows/win32/debug/pe-format#the-idata-section)). A packed binary typically has its real imports compressed inside the payload and exposes only a bootstrap import set — most often `KERNEL32.dll!LoadLibraryA` and `GetProcAddress` — which the unpacking stub uses to rebuild the IAT at runtime. That collapse of the import table is one of the strongest static packing signals and maps to MITRE ATT&CK T1027.002 ([attack.mitre.org/techniques/T1027/002](https://attack.mitre.org/techniques/T1027/002/)).
+
+5. Extend the analysis to recognize post‑unpacking behavior indicators. The import table collapse is a strong static signal, but sophisticated packers may also employ runtime import resolution via API hashing (resolving APIs by comparing hashes of function names at runtime), which leaves no import entries for the hashed functions. To detect such patterns, examine the binary for a loop that calls `GetProcAddress` with computed strings or look for small, repetitive arithmetic operations on strings. Another common post‑unpacking technique is Process Hollowing (MITRE ATT&CK T1055.012), where the packed binary creates a suspended process of a legitimate system binary (e.g., `svchost.exe`), unmaps its original code section, writes the unpacked payload into the same memory region, and resumes the thread. Static clues in the packed binary include imports of `CreateProcessA/W`, `NtUnmapViewOfSection`, `VirtualAllocEx`, and `WriteProcessMemory` — APIs that are uncommon in a minimal import table. In PE‑bear, check the IAT for these specific imports; their presence alongside only `LoadLibrary`/`GetProcAddress` strongly hints at hollowing. Additionally, examine the `.text` section for shellcode patterns that perform process injection (e.g., calls to `NtCreateThreadEx`). Understanding Process Hollowing as a follow‑on technique helps analysts anticipate the malware’s evasion strategy and correlate static PE anomalies with runtime behavior. For official documentation, see MITRE ATT&CK T1055.012 ([attack.mitre.org/techniques/T1055/012](https://attack.mitre.org/techniques/T1055/012/)). Beyond hollowing, packers may incorporate anti‑sandbox techniques such as checking the system time (T1497.001) to stall analysis or detect virtualized environments; a detailed breakdown of sandbox evasion is provided by Malwarebytes ([blog.malwarebytes.com/threat-analysis/2020/10/sandbox-evasion-techniques](https://blog.malwarebytes.com/threat-analysis/2020/10/sandbox-evasion-techniques/)). Combining these static and behavioral signals gives a fuller picture of the packer’s intent and capability.
 
 ## Hands-on exercise
 Analyze the benign packed sample in this module's `exercise/` directory: **`packed_hello.exe`**.
@@ -87,7 +90,10 @@ Note: `cl.exe` is the MSVC compiler driver; `/Fe` names the output executable ([
 **Task:** Open `packed_hello.exe` in PE-bear and DIE. Identify (a) the packer name, (b) the section names, (c) evidence of packing in the section table, and (d) the overall entropy.
 
 ## SOC analyst perspective
+
 A SOC analyst pulls a suspicious binary off a host during triage and needs a verdict before letting it run. PE-bear and DIE give fast static signals: a tiny import table, high entropy, non-standard section names (`UPX0`, `.packed`), or a Raw size of zero with a large Virtual size all suggest a packer or self-decrypting loader.
+
+The mechanism behind these static signals is rooted in how packers transform the original PE. Legitimate packers such as UPX, MPRESS, or custom encryptors compress the original executable into a high-entropy blob—typically exceeding Shannon entropy of 7.0—and store it in sections with non-standard names like `UPX0` or `.packed`. The decompression stub, which runs first, contains only the minimum imports (e.g., `LoadLibraryA`, `GetProcAddress`) to resolve APIs at runtime, explaining the sparse import table. This stub also requests writable and executable memory (`IMAGE_SCN_MEM_WRITE | IMAGE_SCN_MEM_EXECUTE`) so it can decompress the original code into the same section, creating a self-modifying code page that bypasses static analysis but is clearly visible in PE flags ([Varonis PE Format Analysis](https://www.varonis.com/blog/pe-format-and-pe-analyzers/)). Because the compressed data lacks the structural regularity of compiled code, its entropy is uniformly high—a direct consequence of the packing algorithm's statistical properties.
 
 Concrete detection logic and MITRE mapping:
 - **Software packing — T1027.002** ([attack.mitre.org/techniques/T1027/002](https://attack.mitre.org/techniques/T1027/002/)): alert on PE sections with Shannon entropy ≥ 7.0, on `UPX0/UPX1` (or other non-`.text/.rdata/.data/.rsrc`) section names, and on writable+executable section flags (`IMAGE_SCN_MEM_WRITE | IMAGE_SCN_MEM_EXECUTE`) as defined in the PE spec ([learn.microsoft.com PE Format — Section Flags](https://learn.microsoft.com/en-us/windows/win32/debug/pe-format#section-flags)).
@@ -95,12 +101,14 @@ Concrete detection logic and MITRE mapping:
 - **Masquerading — T1036** ([attack.mitre.org/techniques/T1036](https://attack.mitre.org/techniques/T1036/)): forged `TimeDateStamp` or copied section names used to blend in.
 - **Process Injection via DLL — T1055.001** ([attack.mitre.org/techniques/T1055/001](https://attack.mitre.org/techniques/T1055/001/)): detect imports of `VirtualAllocEx`, `WriteProcessMemory`, `CreateRemoteThread`, or `LoadLibrary` combined with writable+executable sections, indicating potential DLL injection post-unpacking.
 - **Command and Scripting Interpreter — T1059.001** ([attack.mitre.org/techniques/T1059/001](https://attack.mitre.org/techniques/T1059/001/)): scan PE resources and raw sections for PowerShell-related strings (e.g., "powershell", "IEX", "Invoke-Expression") indicating post-unpacking script execution.
+- **Process Injection: Portable Executable Injection — T1055.002** ([attack.mitre.org/techniques/T1055/002](https://attack.mitre.org/techniques/T1055/002/)): after the unpacking stub decompresses the original payload, it may inject the entire PE into a remote process (e.g., `svchost.exe` or `explorer.exe`) to evade detection. The SOC analyst can correlate static packer indicators with runtime Sysmon events—Event ID 8 (CreateRemoteThread) for the injection thread and Event ID 10 (ProcessAccess) showing `VirtualAllocEx` and `WriteProcessMemory` calls—to confirm this technique.
 
 Security Onion pivots:
 - **Zeek** logs `pe.log` (compile time, section names, is-64-bit, machine) and `files.log` (`mime_type`, `sha256`, `md5`) for observed transfers; pivot from a PE-bear finding to every host that downloaded the same `sha256`, and use `pe.log` section names to hunt look-alikes ([docs.zeek.org PE analyzer](https://docs.zeek.org/en/master/scripts/base/protocols/http/files.zeek.html), [securityonion.net docs](https://docs.securityonion.net/)).
 - **Suricata** can match on file `filesha256` / YARA-based `filemagic` rules to flag the hash or a UPX byte pattern on the wire ([suricata.readthedocs.io File Keywords](https://suricata.readthedocs.io/en/latest/rules/file-keywords.html)).
 - **Elastic (Kibana Discover/Hunt)**: pivot on `file.hash.sha256` and `file.pe.imphash` to cluster related samples; the imphash (import-hash) groups binaries that share the same import layout, a well-known triage pivot ([attack.mitre.org/techniques/T1027/002](https://attack.mitre.org/techniques/T1027/002/), [securityonion.net docs](https://docs.securityonion.net/)).
 - **Threat-hunting pivot**: Use Elasticsearch Query DSL to search for files with `file.pe.section characteristics: (IMAGE_SCN_MEM_WRITE AND IMAGE_SCN_MEM_EXECUTE)` AND `file.pe.entropy > 7.0` to identify potential packed binaries across the corpus.
+- **Behavioral correlation**: Create Elastic correlation rules combining static file fields with process events. For instance, trigger on `file.pe.entropy >= 7.0` AND `file.pe.section.characteristics: (IMAGE_SCN_MEM_WRITE IMAGE_SCN_MEM_EXECUTE)` AND an `event.action: CreateRemoteThread` from a process whose parent is `explorer.exe`. This ties the packer's static fingerprint to the injection behavior mapped in T1055.002, giving high-fidelity alerting ([NCSC Malware Analysis Guidance](https://www.ncsc.gov.uk/guidance/malware-analysis)).
 
 These indicators feed detection engineering: entropy and imphash values captured here become Suricata/YARA rules and Zeek `files.log`/`pe.log` enrichments in Security Onion, letting analysts correlate the file hash with alerts to scope an incident.
 
@@ -265,6 +273,12 @@ Claim → source mapping (all URLs are real, authoritative pages):
 - SANS FOR610 Reverse-Engineering Malware — https://www.sans.org/cyber-security-courses/reverse-engineering-malware-malware-analysis-tools-techniques/
 - PowerShell logging and detection — Microsoft Learn: https://learn.microsoft.com/en-us/powershell/module/microsoft.powershell.utils/about/about_logging?view=powershell-7.3
 - DLL injection techniques via Windows API — Microsoft Learn: https://learn.microsoft.com/en-us/windows/win32/dlls/dynamic-link-library-search-order
+- https://blog.malwarebytes.com/threat-analysis/2020/10/sandbox-evasion-techniques/
+- https://attack.mitre.org/techniques/T1070/006/
+- https://attack.mitre.org/techniques/T1055/012/
+- https://www.varonis.com/blog/pe-format-and-pe-analyzers/
+- https://attack.mitre.org/techniques/T1055/002/
+- https://www.ncsc.gov.uk/guidance/malware-analysis
 
 ## Related modules
 - [PE static analysis deep-dive](../30-pe-static-deep/README.md) -- shares pe-bear
@@ -287,3 +301,5 @@ Claim → source mapping (all URLs are real, authoritative pages):
 - https://cert.europa.eu/static/WhitePapers/CERT-EU-SWP_19_002_PE-Bear.pdf
 
 <!-- cyberlab-enriched: v4 -->
+
+<!-- cyberlab-enriched: v5 -->
