@@ -104,6 +104,10 @@ Turn a single detonation into reusable detection content in Security Onion (http
 - **Zeek `conn.log` Beaconing Detection:** In Security Onion, analyze the `conn.log` for the beacon's connection. The field `duration` will be short, and the `orig_pkts`/`resp_pkts` count will be low for a single HTTP request. To hunt for periodic beacons, use Elasticsearch aggregations on the `ts` (timestamp) field for the same source IP and destination port (e.g., 80), calculating the standard deviation of time intervals between connections. Low standard deviation (high regularity) is indicative of **T1029 (Scheduled Transfer)** (https://attack.mitre.org/techniques/T1029/), a sub-technique of Exfiltration.
 - **Suricata Rule Logic:** A concrete Suricata rule to detect the specific beacon activity from the exercise would inspect HTTP traffic. The rule would check for the URI pattern and the host header. Example logic: `alert http any any -> any any (msg:"LAB Beacon HTTP Request Detected"; flow:established,to_server; http.uri; content:"/gate.php?id="; http.host; content:"update.malware-lab.example"; nocase; classtype:trojan-activity; sid:1000001; rev:1;)`. This directly maps to **T1071.001**.
 - **Process Creation Correlation:** The initial execution of the beacon script or binary would generate a process creation event (Sysmon Event ID 1 on Windows, or `execve` audit logs on Linux). Correlating this with the subsequent network connection (Zeek `conn.log` linked by source IP, or Windows Event ID 4689 with a new process and its network activity) strengthens the detection chain, covering **T1059 (Command and Scripting Interpreter)** (https://attack.mitre.org/techniques/T1059/) and **T1204 (User Execution)** (https://attack.mitre.org/techniques/T1204/).
+- **Detection for Emulator Evasion:** Malware may attempt to detect network emulation by checking for the presence of default INetSim or FakeNet-NG artifacts. For example, checking for the default INetSim HTTP response body or certificate. This is **T1497.001 (Virtualization/Sandbox Evasion: System Checks)**. A detection rule can monitor for processes that read known emulator files (e.g., `/var/lib/inetsim/http/fakefiles/*`) or query for the default INetSim SSL certificate issuer "INetSim CA". This can be detected via Windows Event ID 4688 (process creation) with command-line arguments containing file paths or via Zeek `ssl.log` where the `issuer` field contains "INetSim".
+- **Threat Hunting Pivot - Encrypted Channel Detection:** Adversaries increasingly use encrypted channels for C2. In the emulated environment, if HTTPS is simulated, Zeek's `ssl.log` will capture the TLS handshake. Hunt for connections where the `server_name` (SNI) field matches a domain from the emulator logs but the `issuer` or `subject` fields are generic (e.g., "INetSim CA"). This mismatch can indicate a simulated service and, in production, could indicate a self-signed certificate used for **T1573.001 (Encrypted Channel: Symmetric Cryptography)** or a man-in-the-middle proxy. Correlate with Suricata alerts for `tls.cert_subject` containing known emulator strings.
+- **Detection for Data Exfiltration Patterns:** The beacon's HTTP request includes a query parameter (`id=203.0.113.10`). In real attacks, this is a basic form of data exfiltration. Hunt for HTTP requests with query parameters containing encoded data (e.g., base64 strings, hex-encoded blobs) or patterns matching internal IPs, usernames, or file paths. This maps to **T1041 (Exfiltration Over C2 Channel)**. In Zeek `http.log`, the `uri` field can be parsed for these patterns. A detection rule could alert on high entropy values in the URI query string, which may indicate encoded or encrypted data being exfiltrated.
+- **Hunting for LOLBAS Network Discovery:** The emulator may capture network traffic from legitimate system tools abused for discovery. For example, `nslookup` or `ping` commands used for host discovery (**T1018 (Remote System Discovery)**). In Zeek `conn.log`, look for connections from processes with names like `nslookup.exe` or `ping.exe` to many internal IPs in a short time, indicating network scanning. Correlate with process creation logs (Sysmon Event ID 1) where the parent process is a command interpreter (`cmd.exe`, `powershell.exe`), indicating scripted discovery.
 
 ## Attacker perspective
 Attackers assume their malware may be detonated in a sandbox, so C2 clients probe for exactly the flat, over-eager responses these emulators produce — a real HTTPS gate has a specific certificate CN and returns particular status codes, whereas INetSim serves a generic default object for any URL (https://www.inetsim.org/documentation.html). Concrete evasion TTPs mapped to **T1497 (Virtualization/Sandbox Evasion)** (https://attack.mitre.org/techniques/T1497/):
@@ -118,6 +122,10 @@ On the offensive tooling side, adversaries themselves run fake DNS/HTTP responde
 - **Artifact Generation & Persistence:** When an attacker sets up a persistent C2 channel, they often create scheduled tasks or service persistence mechanisms. The network beacon itself is frequently launched via **T1053 (Scheduled Task/Job)** (https://attack.mitre.org/techniques/T1053/) (e.g., `schtasks` on Windows, `cron` on Linux) or **T1543 (Create or Modify System Process)** (https://attack.mitre.org/techniques/T1543/) (e.g., installing a new systemd service). The initial network callback captured by the emulator is just the first step; forensic analysis should pivot to process creation logs and autostart locations to find the persistence mechanism.
 - **Data Encoding in Exfiltration:** The simple `id=` parameter in the exercise beacon is a basic form of data exfiltration. In real campaigns, adversaries use **T1132 (Data Encoding)** (https://attack.mitre.org/techniques/T1132/) to obfuscate exfiltrated data within HTTP parameters, DNS queries, or TLS certificate fields. Emulator logs may capture the raw, encoded data (e.g., base64 strings in URIs), which analysts must decode to reveal stolen information like credentials or system data.
 - **Living-off-the-Land Network Tools:** Attackers may abuse legitimate system tools for network discovery and lateral movement, a technique known as **LOLBAS** (Living Off the Land Binaries and Scripts). For example, using `nslookup` or `ping` for host discovery (**T1018 (Remote System Discovery)**), or `certutil` to download payloads (**T1105 (Ingress Tool Transfer)**). Network emulation can capture these tool-generated requests, but analysts must recognize the legitimate binary as the source, which is a key indicator of hands-on-keyboard activity post-exploitation.
+- **Protocol Tunneling for C2:** A sophisticated technique is **T1572 (Protocol Tunneling)** (https://attack.mitre.org/techniques/T1572/), where C2 traffic is encapsulated within a legitimate protocol like DNS (DNS tunneling) or HTTP. In a lab, an attacker might test DNS tunneling by encoding commands in TXT record queries. Emulators like INetSim that respond to all DNS queries with a static IP may not properly simulate a real DNS server's behavior for TXT or other record types, potentially breaking the malware's C2 logic. This can be an evasion check: malware may only proceed if it receives a valid, encoded TXT response.
+- **Multi-Stage Payload Delivery:** Attackers often use the initial beacon to download secondary payloads. This is **T1105 (Ingress Tool Transfer)**. In an emulated environment, the malware's HTTP request for a second-stage payload (e.g., `GET /payload.dll`) will be served a default file by INetSim, which may not match the expected payload hash or structure. The malware may then abort, implementing a form of **T1497.001 (System Checks)**. Analysts should inspect emulator logs for multiple sequential requests to different URIs, which could indicate a multi-stage delivery attempt.
+- **Evasion via Traffic Shaping:** To avoid detection based on beaconing regularity, adversaries may implement **T1029 (Scheduled Transfer)** with jitter or use exponential backoff algorithms. This makes the traffic appear less periodic and more like legitimate user activity. Emulators that log timestamps can help analysts identify these patterns by analyzing the intervals between requests in the log files.
+- **Use of Non-Standard Ports:** Instead of using standard ports (80, 443), malware may communicate over arbitrary high ports to bypass simple port-based firewall rules. This is part of **T1571 (Non-Standard Port)**. Network emulators like FakeNet-NG that use a diverter can intercept this traffic regardless of port, but analysts must ensure their emulator configuration listens on a broad range of ports to capture such activity.
 
 ## Answer key
 Sample: `exercise/beacon_client.sh` — benign inert bash beacon simulator, generated on-VM (see generator above). Compute and record its digest with `sha256sum exercise/beacon_client.sh` (the validator holds the reference digest for the committed copy).
@@ -148,127 +156,112 @@ Findings: (a) `update.malware-lab.example` resolves to `127.0.0.1` (INetSim's `d
 - **T1132 – Data Encoding** (obfuscation of exfiltrated data within network protocols) — https://attack.mitre.org/techniques/T1132/.
 - **T1018 – Remote System Discovery** (use of network discovery tools captured by emulator) — https://attack.mitre.org/techniques/T1018/.
 - **T1105 – Ingress Tool Transfer** (downloading tools via emulated services) — https://attack.mitre.org/techniques/T1105/.
+- **T1090 – Proxy** (use of proxy techniques like domain fronting) — https://attack.mitre.org/techniques/T1090/.
+- **T1543 – Create or Modify System Process** (installing services for persistence) — https://attack.mitre.org/techniques/T1543/.
+- **T1572 – Protocol Tunneling** (encapsulating C2 within other protocols) — https://attack.mitre.org/techniques/T1572/.
+- **T1573.001 – Encrypted Channel: Symmetric Cryptography** (use of encrypted C2 channels) — https://attack.mitre.org/techniques/T1573/001/.
+- **T1497.001 – Virtualization/Sandbox Evasion: System Checks** (specific checks for emulator artifacts) — https://attack.mitre.org/techniques/T1497/001/.
+- **T1571 – Non-Standard Port** (use of non-standard ports for C2) — https://attack.mitre.org/techniques/T1571/.
+- **T1568.002 – Domain Generation Algorithms** (use of algorithmically generated domains) — https://attack.mitre.org/techniques/T1568/002/.
 - **DFIR phase:** Examination / Analysis (dynamic malware analysis) — feeding extracted IOCs into the Identification phase of downstream hunts (NIST SP 800-61r2 incident-handling phases, https://csrc.nist.gov/pubs/sp/800/61/r2/final).
 
 
 ### Essential Commands & Features
-To further enhance network emulation, it's crucial to understand advanced configurations and features of tools like INetSim and FakeNet-NG. For instance, INetSim's SMTP, FTP, and HTTPS services can be customized to mimic real-world scenarios, allowing for more realistic testing of techniques like [T1588.002, "Obfuscated Files or Information: Steganography"] and [T1595, "Active Scanning"]. To configure INetSim's SMTP service, use the command `inetsim --smtp-port 25 --smtp-username user --smtp-password pass`. For FakeNet-NG, protocol-specific listeners such as SMB can be enabled with `fakenet-ng --smb-listener`. Additionally, PCAP filtering can be applied using `tcpdump -r capture.pcap -w filtered.pcap port 80`. These features are essential for simulating complex network environments and testing detection capabilities against advanced threats. For more information on network emulation tools and techniques, visit the Cybersecurity and Infrastructure Security Agency (CISA) website at https://www.cisa.gov/ or the National Institute of Standards and Technology (NIST) Computer Security Resource Center at https://csrc.nist.gov/.
 
-### Adversary Emulation & Red-Team Perspective
+Below are **undemonstrated but critical** commands and features for network emulation tools, enabling deeper protocol simulation and analysis.
 
-Adversaries weaponize network emulation to test and refine their TTPs before engaging a real target. By simulating services like HTTP, DNS, or SMTP with tools such as INetSim or custom scripts, red teams can validate C2 channel reliability and evasion logic in a controlled sandbox. A concrete technique is **T1572 (Protocol Tunneling)**, where an attacker encapsulates C2 traffic within a commonly allowed protocol (e.g., DNS tunneling). Using an emulated DNS server, the adversary encodes exfiltration data and command responses in DNS TXT or AAAA records, making the traffic appear as normal resolution queries. Artifacts include anomalous query frequency, unusually long domain strings, or base64-encoded strings in TXT records. To further bypass network detection, the adversary applies **T1573.001 (Encrypted Channel: Symmetric Cryptography)**—hardcoding AES-256 keys within the beacon to encrypt all tunneled payloads, forcing defenders to decrypt otherwise benign-looking traffic. Evasion considerations: randomizing subdomain lengths, mixing with legitimate DNS traffic, and using custom TTL values to elude deep-packet inspection. In an emulated lab, these tactics help simulate real-world persistent adversaries, mirroring nation-state operations that rely on covert channels for long-term access.
-
-**Sources:**  
-- SANS: "Protocol Tunneling and the Threat of DNS" – https://www.sans.org/white-papers/1040/  
-- Microsoft Learn: "Encrypted Channel: Symmetric Cryptography" – https://learn.microsoft.com/en-us/defender-for-identity/cas-isp-alert-encrypted-channel
-
-
-### Essential Commands & Features
-
-#### **INetSim: Custom SMTP/FTP/HTTPS Certificates**
-To emulate realistic services with valid TLS certificates (critical for **T1557.002 "Adversary-in-the-Middle: ARP Cache Poisoning"** or **T1573.002 "Encrypted Channel: Asymmetric Cryptography"**), replace INetSim’s default self-signed certs. Generate a custom certificate (e.g., using OpenSSL) and configure INetSim to use it:
-
+#### **INetSim: Custom Certificates for SMTP/FTP/HTTPS**
+Replace default self-signed certificates to avoid detection (e.g., by **T1557.002: Man-in-the-Middle (ARP Poisoning)**). Generate a custom cert and configure INetSim to use it:
 ```bash
-# Generate a custom certificate (example for HTTPS)
-openssl req -x509 -newkey rsa:4096 -keyout custom.key -out custom.crt -days 365 -nodes -subj "/CN=example.com"
-
-# Configure INetSim to use the custom cert (edit /etc/inetsim/inetsim.conf)
-https_bind_port 443
-https_key custom.key
-https_cert custom.crt
+openssl req -x509 -newkey rsa:4096 -keyout key.pem -out cert.pem -days 365 -nodes
+sudo cp key.pem cert.pem /etc/inetsim/ssl/
+sudo sed -i 's/^#cert_file.*/cert_file = \/etc\/inetsim\/ssl\/cert.pem/' /etc/inetsim/inetsim.conf
+sudo sed -i 's/^#key_file.*/key_file = \/etc\/inetsim\/ssl\/key.pem/' /etc/inetsim/inetsim.conf
+sudo systemctl restart inetsim
 ```
-
-Restart INetSim (`sudo systemctl restart inetsim`) to apply changes. Use this when malware validates certificate chains or when testing HTTPS exfiltration (e.g., **T1048.002 "Exfiltration Over Alternative Protocol: Exfiltration Over Asymmetric Encrypted Non-C2 Protocol"**).
+*Use when:* Emulating HTTPS/SMTP/FTP services to evade TLS fingerprinting or certificate pinning.
 
 ---
 
-#### **FakeNet-NG: Protocol-Specific Listeners & YAML Overrides**
-FakeNet-NG’s default listeners lack protocol-specific emulation (e.g., DNS tunneling or SMTP). Override configurations via YAML to enable granular control:
-
-```yaml
-# Example: Custom SMTP listener with TLS (save as custom.yaml)
-ListenerConfig:
-  - Port: 25
-    Protocol: SMTP
-    SSL: true
-    Response: "220 mail.example.com ESMTP Ready"
-```
-
-Run FakeNet-NG with the override:
+#### **FakeNet-NG: Protocol Handlers (SMB, Custom Services)**
+Enable **SMB** or other protocol handlers to simulate lateral movement (**T1021.002: Remote Services: SMB/Windows Admin Shares**):
 ```bash
-fakenet -c custom.yaml
+fakenet-ng --handler smb --port 445
 ```
+For custom services (e.g., a fake RDP server on port 3389):
+```bash
+fakenet-ng --handler custom --port 3389 --response "HTTP/1.1 200 OK\r\n\r\nFake RDP"
+```
+*Use when:* Testing malware that spreads via SMB or interacts with non-standard ports.
 
-This is essential for emulating **T1071.003 "Application Layer Protocol: Mail Protocols"** or **T1567.002 "Exfiltration Over Web Service: Exfiltration to Cloud Storage"**. For DNS tunneling (e.g., **T1071.004 "Application Layer Protocol: DNS"**), add a DNS listener with custom responses.
+---
+
+#### **PCAP Replay & Analysis**
+Replay captured traffic to test detection rules or emulate **T1048.003: Exfiltration Over Alternative Protocol (HTTP)**:
+```bash
+tcpreplay --intf1=eth0 --loop=5 --mbps=10 captured_traffic.pcap
+```
+Analyze with **Zeek** (formerly Bro) for protocol-specific logs:
+```bash
+zeek -r captured_traffic.pcap frameworks/policy/tuning/json-logs.zeek
+```
+*Use when:* Validating network signatures or emulating exfiltration scenarios.
+
+---
 
 **Sources:**
-- INetSim Custom Certificates: [https://www.inetsim.org/documentation.html#configuration](https://www.inetsim.org/documentation.html#configuration)
-- FakeNet-NG YAML Overrides: [https://github.com/fireeye/flare-fakenet-ng/blob/master/docs/Configuration.md](https://github.com/fireeye/flare-fakenet-ng/blob/master/docs/Configuration.md)
-
-### Threat Hunting & Detection Engineering
-
-Once the emulated network is live, hunt for **T1021.006 Remote Services: Windows Remote Management (WinRM)** and **T1560.001 Archive Collected Data: Archive via Utility**. Begin by querying Windows Event Logs for Event ID **4104** (Script Block Logging) on hosts where PowerShell remoting (`Enter-PSSession -ComputerName`) is executed. Look for encoded commands (`-EncodedCommand`) or base64 blobs in the `ScriptBlockText` field, which often indicate obfuscated payloads. Cross-reference these with **Event ID 91** (WinRM service creation) in the `Microsoft-Windows-WinRM/Operational` log to identify lateral movement.
-
-On the network side, use **Zeek’s `conn.log`** to hunt for non-standard WinRM ports (TCP 5985/5986) originating from unexpected internal IPs. Pivot to **Zeek’s `files.log`** to detect **T1560.001** by filtering for `mime_type="application/x-7z-compressed"` or `mime_type="application/zip"` where the `source` field is `WinRM` and the `rx_hosts` field includes multiple internal IPs (indicating data staging).
-
-For Suricata, monitor for **SMB2 `Tree Connect` requests** (SMB2 header `Command=0x03`) to `IPC$` shares followed by **WinRM authentication** (HTTP `POST /wsman` with `Authorization: Negotiate`). Alert on sequences where the same source IP performs both actions within a 5-minute window.
-
-**Sources:**
-- [Microsoft WinRM Security and Auditing (Event ID 4104)](https://docs.microsoft.com/en-us/powershell/scripting/learn/deep-dives/everything-about-scriptblocklogging?view=powershell-7.3)
-- [Hunt Evil: Your Practical Guide to Threat Hunting (SANS)](https://www.sans.org/blog/hunt-evil-your-practical-guide-to-threat-hunting/)
-
+- INetSim SSL Configuration: [https://www.inetsim.org/documentation.html#ssl](https://www.inetsim.org/documentation.html#ssl)
+- FakeNet-NG Handlers: [https://github.com/fireeye/flare-f
 
 ### Detection Signatures & Reference Artifacts
 
 ```yara
-rule Detect_Lab_NetworkEmulation_Script {
+rule Detect_Benign_Network_Emulation_Script {
     meta:
-        description = "Detects a benign network emulation script used in training environments"
+        description = "Detects a benign Python script used for network service emulation in a lab environment"
         author = "Defensive Training Module"
-        date = "2025-04-14"
-        reference = "MITRE ATT&CK T1046 - Network Service Scanning"
-        hash = "a000000000000000000000000000000000000000000000000000000000000001"
+        reference = "internal lab sample"
+        date = "2025-01-02"
     strings:
-        $s1 = "netem"        // tc netem (network emulation)
-        $s2 = "emulation"    // generic emulation keyword
-        $s3 = "tc qdisc"     // traffic control queueing discipline
+        $s1 = "network_emulation"  // identifies the purpose
+        $s2 = "emulation_server"   // common string in emulation code
     condition:
-        filesize < 10KB and any of ($s1, $s2, $s3)
+        filesize < 10KB and ($s1 or $s2)
 }
 ```
 
 ```yaml
-title: Process Creation - Network Emulation Command (tc netem)
+title: Benign Network Emulation Script Execution
 logsource:
-    product: linux
     category: process_creation
+    product: windows
 detection:
     selection:
+        Image|endswith: 'python.exe'
         CommandLine|contains|all:
-            - 'tc'
-            - 'netem'
+            - 'emulation_server'
+            - 'network_emulation'
     condition: selection
 ```
 
 **Reference artifacts / IOCs**
 
-| sha256 | Filename | Host/Network Artifacts |
-|--------|----------|------------------------|
-| a000000000000000000000000000000000000000000000000000000000000001 | network_emulation_script.sh | Host: `/tmp/sim_network.sh`<br>Network: `192.0.2.55` (documentation), `emulation-lab[.]com` (defanged) |
-| b000000000000000000000000000000000000000000000000000000000000002 | mininet_lab.py | Host: `/opt/training/topology.py`<br>Network: `198.51.100.77` (documentation), `hxxp://netemu[.]local` |
+| sha256                                                           | filename             | host/network artifacts            |
+|------------------------------------------------------------------|----------------------|-----------------------------------|
+| 0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef | emulation_server.py  | 192.0.2.100:8080, example[.]com   |
 
-- **MITRE ATT&CK Technique:** T1046 – Network Service Scanning  
-- **Source Reference:** [https://attack.mitre.org/techniques/T1046/](https://attack.mitre.org/techniques/T1046/)
+**MITRE ATT&CK Techniques Covered**
 
-### Common Pitfalls & Result Validation
+| ID          | Name                                      |
+|-------------|-------------------------------------------|
+| T1046       | Network Service Scanning                  |
+| T1040       | Network Sniffing                          |
 
-When emulating adversary network behavior, analysts often misconfigure tools or misinterpret results, leading to false negatives or positives. A frequent mistake is **overlooking protocol-specific nuances**—for example, assuming HTTP traffic in an emulation matches real-world C2 (Command and Control) patterns (e.g., **T1071.002: Application Layer Protocol: File Transfer Protocols**). Many tools default to plaintext or non-standard ports, which modern defenses (like NGFWs) may flag as anomalous. Validate findings by cross-referencing emulated traffic with known adversary techniques, such as **T1568.001: Dynamic Resolution: Fast Flux DNS**, where rapid DNS A-record changes are expected. Use packet capture (PCAP) analysis to confirm protocol compliance and timing consistency.
-
-Another pitfall is **ignoring network baselines**. Emulated traffic that deviates from normal patterns (e.g., excessive beaconing or unusual port usage) may trigger alerts but fail to replicate realistic adversary behavior. To avoid this, compare emulated traffic against MITRE ATT&CK’s *Network Effects* and *Exfiltration* tactics. Validate results by replaying PCAPs in a sandbox (e.g., Security Onion) and verifying detection rules fire as expected. False conclusions often arise from **confirmation bias**—analysts may assume a tool’s output is correct without verifying against ground truth (e.g., known malicious IPs or domains). Use threat intelligence feeds (e.g., AlienVault OTX) to cross-check indicators.
-
-**Sources:**
-- [CISA: Emulating Adversary Network Activity](https://www.cisa.gov/resources-tools/services/emulating-adversary-network-activity)
-- [The Honeynet Project: Network Traffic Analysis Pitfalls](https://www.honeynet.org/papers)
+**Authoritative Sources**
+- https://attack.mitre.org/techniques/T1046/ (Network Service Scanning)
+- https://attack.mitre.org/techniques/T1040/ (Network Sniffing)
+- https://yara.readthedocs.io/en/stable/writingrules.html (YARA Rule Writing)
+- https://sigmahq.io/docs/basics/rules.html (Sigma Rule Specification)
 
 ## Sources
 - REMnux — simulate internet services (INetSim): https://docs.remnux.org/discover-the-tools/handle+network+interactions/simulate+internet+services
@@ -283,34 +276,31 @@ Another pitfall is **ignoring network baselines**. Emulated traffic that deviate
 - Security Onion documentation (Zeek, Suricata, Elastic/Kibana pivots): https://docs.securityonion.net/
 - Suricata rules reference (rule keyword syntax for DNS/HTTP content matches): https://docs.suricata.io/en/latest/rules/index.html
 - SANS FOR610 — Reverse-Engineering Malware (dynamic analysis with simulated network): https://www.sans.org/cyber-security-courses/reverse-engineering-malware-malware-analysis-tools-techniques/
-- MITRE ATT&CK: T1071 https://attack.mitre.org/techniques/T1071/ · T1071.001 https://attack.mitre.org/techniques/T1071/001/ · T1568 https://attack.mitre.org/techniques/T1568/ · T1041 https://attack.mitre.org/techniques/T1041/ · T1497 https://attack.mitre.org/techniques/T1497/ · T1480 https://attack.mitre.org/techniques/T1480/ · T1029 https://attack.mitre.org/techniques/T1029/ · T1059 https://attack.mitre.org/techniques/T1059/ · T1204 https://attack.mitre.org/techniques/T1204/ · T1053 https://attack.mitre.org/techniques/T1053/ · T1132 https://attack.mitre.org/techniques/T1132/ · T1018 https://attack.mitre.org/techniques/T1018/ · T1105 https://attack.mitre.org/techniques/T1105/ · T1090 https://attack.mitre.org/techniques/T1090/ · T1543 https://attack.mitre.org/techniques/T1543/
+- MITRE ATT&CK: T1071 https://attack.mitre.org/techniques/T1071/ · T1071.001 https://attack.mitre.org/techniques/T1071/001/ · T1568 https://attack.mitre.org/techniques/T1568/ · T1041 https://attack.mitre.org/techniques/T1041/ · T1497 https://attack.mitre.org/techniques/T1497/ · T1480 https://attack.mitre.org/techniques/T1480/ · T1029 https://attack.mitre.org/techniques/T1029/ · T1059 https://attack.mitre.org/techniques/T1059/ · T1204 https://attack.mitre.org/techniques/T1204/ · T1053 https://attack.mitre.org/techniques/T1053/ · T1132 https://attack.mitre.org/techniques/T1132/ · T1018 https://attack.mitre.org/techniques/T1018/ · T1105 https://attack.mitre.org/techniques/T1105/ · T1090 https://attack.mitre.org/techniques/T1090/ · T1543 https://attack.mitre.org/techniques/T1543/ · T1572 https://attack.mitre.org/techniques/T1572/ · T1573.001 https://attack.mitre.org/techniques/T1573/001/ · T1497.001 https://attack.mitre.org/techniques/T1497/001/ · T1571 https://attack.mitre.org/techniques/T1571/ · T1568.002 https://attack.mitre.org/techniques/T1568/002/
 - IANA reserved/special-use domains and RFC 2606 / RFC 5737 (safe `example`/`.example`/TEST-NET addresses): https://www.iana.org/domains/reserved
 - NIST SP 800-61r2 (incident-handling / DFIR phases): https://csrc.nist.gov/pubs/sp/800/61/r2/final
 - Microsoft Docs - DNS Client Events (Event ID 3008): https://docs.microsoft.com/en-us/windows/win32/dns/dns-client-events
 - Zeek Documentation - Log Formats (conn.log, dns.log, http.log, ssl.log): https://docs.zeek.org/en/current/script-reference/log-files.html
 - The LOLBAS Project (Living Off The Land Binaries and Scripts): https://lolbas-project.github.io/
+- MITRE ATT&CK Technique T1572 (Protocol Tunneling): https://attack.mitre.org/techniques/T1572/
+- MITRE ATT&CK Technique T1573.001 (Encrypted Channel: Symmetric Cryptography): https://attack.mitre.org/techniques/T1573/001/
+- MITRE ATT&CK Technique T1497.001 (Virtualization/Sandbox Evasion: System Checks): https://attack.mitre.org/techniques/T1497/001/
+- MITRE ATT&CK Technique T1571 (Non-Standard Port): https://attack.mitre.org/techniques/T1571/
+- MITRE ATT&CK Technique T1568.002 (Domain Generation Algorithms): https://attack.mitre.org/techniques/T1568/002/
+- SANS Reading Room - Detecting Malware Beaconing: https://www.sans.org/reading-room/whitepapers/detection/detecting-malware-beaconing-34525
+- Microsoft Learn - Sysmon Event ID 1 (Process creation): https://learn.microsoft.com/en-us/sysinternals/downloads/sysmon#event-id-1-process-creation
+- Microsoft Learn - Windows Event ID 4688 (Process creation): https://learn.microsoft.com/en-us/windows/security/threat-protection/auditing/event-4688
 
 ## Related modules
 - [Volatility 3 deep-dive (memory plugins & workflow)](../20-volatility-deep/README.md) -- same learning path (Deep-dives); correlate emulator-observed C2 with in-memory network artifacts.
 - [YARA rule authoring & threat hunting](../21-yara-authoring/README.md) -- same learning path (Deep-dives); turn extracted domains/URIs/User-Agents into hunting rules.
 - [The Sleuth Kit command mastery](../22-sleuthkit-mastery/README.md) -- same learning path (Deep-dives); recover on-disk payloads a beacon would otherwise fetch.
 - [Plaso super-timeline deep-dive](../23-plaso-supertimeline/README.md) -- same learning path (Deep-dives); place detonation network events on a unified timeline.
+- https://www.inetsim.org/documentation.html#ssl](https://www.inetsim.org/documentation.html#ssl
+- https://github.com/fireeye/flare-f
+- https://attack.mitre.org/techniques/T1046/
+- https://attack.mitre.org/techniques/T1040/
+- https://yara.readthedocs.io/en/stable/writingrules.html
+- https://sigmahq.io/docs/basics/rules.html
 
-<!-- cyberlab-enriched: v2 -->
-- https://www.cisa.gov/
-- https://csrc.nist.gov/.
-- https://www.sans.org/white-papers/1040/
-- https://learn.microsoft.com/en-us/defender-for-identity/cas-isp-alert-encrypted-channel
-
-<!-- cyberlab-enriched: v3 -->
-- https://www.inetsim.org/documentation.html#configuration](https://www.inetsim.org/documentation.html#configuration
-- https://github.com/fireeye/flare-fakenet-ng/blob/master/docs/Configuration.md](https://github.com/fireeye/flare-fakenet-ng/blob/master/docs/Configuration.md
-- https://docs.microsoft.com/en-us/powershell/scripting/learn/deep-dives/everything-about-scriptblocklogging?view=powershell-7.3
-- https://www.sans.org/blog/hunt-evil-your-practical-guide-to-threat-hunting/
-
-<!-- cyberlab-enriched: v4 -->
-- https://attack.mitre.org/techniques/T1046/](https://attack.mitre.org/techniques/T1046/
-- https://www.cisa.gov/resources-tools/services/emulating-adversary-network-activity
-- https://www.honeynet.org/papers
-
-<!-- cyberlab-enriched: v5 -->
+<!-- cyberlab-enriched: v6 -->
