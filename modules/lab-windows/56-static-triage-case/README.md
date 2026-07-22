@@ -300,6 +300,49 @@ detection:
 | Network Artifact | hxxp://example[.]com/training | Defanged URL used for simulation |
 This detection content is related to the MITRE ATT&CK technique [T1114 - Email Collection](https://attack.mitre.org/techniques/T1114/). For more information, visit the [MITRE ATT&CK](https://attack.mitre.org/) website: https://attack.mitre.org/
 
+
+### Essential Commands & Features
+
+When automating static triage with **DIE (Detect It Easy) console (`diec.exe`)**, the following undemonstrated commands and flags are critical for scripting and deeper analysis. These enable structured output, recursive scanning, and entropy visualization—key for detecting obfuscation and packed binaries (e.g., **T1027.001: Obfuscated Files or Information** and **T1553.004: Install Root Certificate**).
+
+1. **`-json`**: Export results in JSON for parsing in SIEMs or custom tools.
+   ```bash
+   diec.exe -json suspicious.exe > output.json
+   ```
+   *Use when*: Integrating DIE with automated pipelines (e.g., Splunk, ELK).
+
+2. **`-d`**: Recursively scan directories for embedded artifacts.
+   ```bash
+   diec.exe -d C:\Temp\malware_samples\
+   ```
+   *Use when*: Analyzing nested payloads (e.g., **T1105: Ingress Tool Transfer**).
+
+3. **`-f`**: Force scan files regardless of extension (e.g., `.dat`, `.tmp`).
+   ```bash
+   diec.exe -f unknown_file.dat
+   ```
+   *Use when*: Investigating files with misleading extensions (e.g., **T1036.003: Rename System Utilities**).
+
+4. **Entropy Graph Flags**: Visualize entropy to identify packed/encrypted sections.
+   ```bash
+   diec.exe --entropy-graph suspicious.dll
+   ```
+   *Use when*: Detecting compression/encryption (e.g., **T1027.004: Compile After Delivery**).
+
+**Sources**:
+- [DIE GitHub: Command-Line Options](https://github.com/horsicq/Detect-It-Easy/blob/master/docs/CLI.md)
+- [SANS FOR578: Entropy Analysis in Malware](https://www.sans.org/blog/entropy-analysis-with-die/)
+
+### Adversary Emulation & Red-Team Perspective
+
+From an adversary’s standpoint, static triage of a malware sample is a critical step in evasion. A red teamer emulating an advanced threat will first analyze the binary’s import tables, embedded strings, and cryptographic constants to identify which execution hooks it triggers—using **T1053.005 Scheduled Task** for persistent re‑infection, for example. The adversary crafts a task XML that launches the payload at logon or system startup, often naming it after a legitimate service (e.g., “MicrosoftEdgeUpdateTask”) to blend in. Artifacts include the scheduled task XML stored in `%WINDIR%\Tasks` and entries in the Task Scheduler’s registry under `HKLM\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Schedule\TaskCache\Tree`.
+
+Another common persistence vector is **T1546.015 Component Object Model Hijacking**, where the attacker overwrites a CLSID’s `InprocServer32` registry key to point to their own DLL. During static triage, the red team looks for references to `CLSID` or `ProgID` and later modifies keys like `HKCU\Software\Classes\CLSID\{...}\InprocServer32`. This leaves registry modifications as the primary artifact. Evasion considerations include using benign‑looking GUIDs, encrypting the hijacked DLL, and leveraging well‑known CLSIDs (e.g., for Microsoft Office components) to avoid triggering behavioral analytics.
+
+Sources:  
+- Varonis: *“Scheduled Tasks for Persistence”* – https://www.varonis.com/blog/scheduled-tasks-persistence  
+- Cybereason: *“COM Hijacking: A Sophisticated Persistence Technique”* – https://www.cybereason.com/blog/com-hijacking-persistence-technique
+
 ## Sources
 - Detect-It-Easy: official repo and console flags – https://github.com/horsicq/Detect-It-Easy, https://github.com/horsicq/DIE-engine
 - capa: official repo, rules, and ATT&CK mapping – https://github.com/mandiant/capa, https://github.com/mandiant/capa-rules
@@ -356,3 +399,9 @@ This detection content is related to the MITRE ATT&CK technique [T1114 - Email C
 - https://attack.mitre.org/
 
 <!-- cyberlab-enriched: v5 -->
+- https://github.com/horsicq/Detect-It-Easy/blob/master/docs/CLI.md
+- https://www.sans.org/blog/entropy-analysis-with-die/
+- https://www.varonis.com/blog/scheduled-tasks-persistence
+- https://www.cybereason.com/blog/com-hijacking-persistence-technique
+
+<!-- cyberlab-enriched: v6 -->
