@@ -280,6 +280,119 @@ Avoid conclusions without **corroborating evidence**—a YARA hit alone doesn’
 - [Florian Roth’s YARA Best Practices (Nextron Systems)](https://www.nextron-systems.com/2020/04/07/yara-best-practices/)
 - [CERT-EU’s YARA Performance Guidelines](https://cert.europa.eu/static/WhitePapers/CERT-EU-SWP_17-001_YARA_Performance_Guidelines.pdf)
 
+
+### Essential Commands & Features
+
+YARA’s power extends beyond basic pattern matching. Below are **critical but often overlooked** commands, modules, and flags to enhance detection efficacy—each with a concrete example and tactical use case.
+
+---
+
+#### **1. Modules (PE/ELF)**
+Leverage file format-specific modules to detect structural anomalies. The `pe` and `elf` modules parse headers, sections, and imports, enabling detection of packed binaries or suspicious exports.
+
+**Example (PE Module):**
+```yara
+import "pe"
+rule Detect_Suspicious_Section {
+    meta:
+        description = "Detects PE files with a section named '.crt' (common in Cobalt Strike)"
+        mitre = "T1027.002 Obfuscated Files or Information: Software Packing"
+    condition:
+        pe.sections[0].name == ".crt"
+}
+```
+**When to use:** Target adversaries abusing legitimate file formats (e.g., [T1059.003 Command and Scripting Interpreter: Windows Command Shell](https://attack.mitre.org/techniques/T1059/003/)) or packing malware (e.g., UPX).
+
+---
+
+#### **2. External Variables**
+Pass runtime variables (e.g., file paths, hashes) to rules for dynamic analysis. Use `--define` in the CLI or `external` in rules.
+
+**Example (External Variable):**
+```yara
+rule Check_File_Size {
+    meta:
+        description = "Alerts if file exceeds a size threshold (passed externally)"
+    condition:
+        filesize > ext_max_size
+}
+```
+**Run command:**
+```bash
+yara --define ext_max_size=100KB rule.yar target.exe
+```
+**When to use:** Filter large files (e.g., [T1132.001 Data Encoding: Standard Encoding](https://attack.mitre.org/techniques/T1132/001/)) or validate hashes without hardcoding.
+
+---
+
+#### **3. Global Rules**
+Apply `global` to enforce conditions across *all* rules (e.g., whitelist benign files). Global rules execute first; if they fail, no other rules run.
+
+**Example (Global Whitelist):**
+```yara
+global rule Whitelist_Trusted_Signer {
+    condition:
+        pe.signatures[0].subject contains "Microsoft Corporation"
+}
+```
+**When to use:** Reduce false positives in enterprise environments (e.g., excluding signed software during hunts for [T1559.001 Inter-Process Communication: Component Object Model](https://attack.mitre.org/techniques/T1559/001/)).
+
+---
+
+#### **4. Debugging Flags**
+- **`--print-string-length`**: Show string match
+
+### Detection Signatures & Reference Artifacts
+
+#### YARA Rule
+
+```yara
+rule BenignLabMarker {
+    meta:
+        description = "Detects a benign lab sample marker string for training"
+        author = "Training Author"
+        date = "2023-10-01"
+        reference = "https://yara.readthedocs.io/en/stable/writingrules.html"
+    strings:
+        $marker = "BenignLabMarker"
+    condition:
+        filesize < 1MB and $marker
+}
+```
+
+#### Sigma Rule
+
+```yaml
+title: Benign Lab Process Execution Detection
+logsource:
+    product: windows
+    category: process_creation
+detection:
+    selection:
+        Image|endswith: '\calc.exe'
+        CommandLine|contains: 'educational_lab'
+    condition: selection
+```
+
+#### Reference Artifacts / IOCs
+
+| Type                  | Value                                                                 |
+|-----------------------|-----------------------------------------------------------------------|
+| SHA256 Hash           | `e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855` (example for benign file) |
+| Filename              | `lab_sample.docx`                                                     |
+| Host Artifact         | `C:\Users\LabUser\Desktop\lab_sample.docx`                           |
+| Network Artifact      | `hxxp://lab.example[.]com/training`                                   |
+
+**MITRE ATT&CK Techniques Referenced**  
+- T1203 – Exploitation for Client Execution (detection of malicious document opening)  
+- T1083 – File and Directory Discovery (detection of file access/retrieval)
+
+**Authoritative Sources**  
+- MITRE ATT&CK: https://attack.mitre.org/techniques/T1203/  
+- MITRE ATT&CK: https://attack.mitre.org/techniques/T1083/  
+- YARA documentation: https://yara.readthedocs.io/en/stable/writingrules.html  
+- Sigma specification: https://github.com/SigmaHQ/sigma-specification
+
 ## Sources
 Claim → source mapping (all URLs are official tool docs, MITRE ATT&CK, SANS, or recognized project docs):
 
@@ -334,3 +447,12 @@ Claim → source mapping (all URLs are official tool docs, MITRE ATT&CK, SANS, o
 - https://cert.europa.eu/static/WhitePapers/CERT-EU-SWP_17-001_YARA_Performance_Guidelines.pdf
 
 <!-- cyberlab-enriched: v5 -->
+- https://attack.mitre.org/techniques/T1059/003/
+- https://attack.mitre.org/techniques/T1132/001/
+- https://attack.mitre.org/techniques/T1559/001/
+- https://yara.readthedocs.io/en/stable/writingrules.html"
+- https://attack.mitre.org/techniques/T1203/
+- https://attack.mitre.org/techniques/T1083/
+- https://github.com/SigmaHQ/sigma-specification
+
+<!-- cyberlab-enriched: v6 -->
