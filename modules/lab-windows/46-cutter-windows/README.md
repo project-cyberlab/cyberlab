@@ -241,6 +241,64 @@ Once **46-cutter-windows** has carved a malicious payload from memory, shift foc
 - [CERT-EU: Hunting for Masquerading Techniques (T1036)](https://cert.europa.eu/static/WhitePapers/CERT-EU-SWP_17_001_Masquerading_v1_0.pdf)
 - [FireEye: Detecting Disabling of Security Tools (T1562.001)](https://www.fireeye.com/blog/threat-research/2020/03/suspicious-processes-indicative-of-security-tool-disabling.html)
 
+
+### Essential Commands & Features
+
+Cutter’s advanced capabilities extend beyond basic disassembly and analysis. Below are **high-impact commands and features** to accelerate reverse engineering, particularly for malware analysis and threat hunting:
+
+1. **Function Cross-References (`xrefs`)**
+   Identify where a function is called or referenced to trace execution flow—critical for analyzing **T1112 (Modify Registry)** or **T1548.002 (Bypass User Account Control)**.
+   ```bash
+   # In Cutter's console (View → Console):
+   [0x00401234]> axt @ sym.imp.RegOpenKeyExW
+   ```
+   *Use when:* Mapping persistence mechanisms or registry modifications.
+
+2. **Memory Dump (`dm` + `px`)**
+   Extract runtime artifacts (e.g., injected code) from memory regions, useful for detecting **T1055.003 (Process Injection: Thread Local Storage)**.
+   ```bash
+   [0x00401234]> dm~heap  # List heap regions
+   [0x00401234]> px 256 @ 0x1a00000  # Hexdump 256 bytes at address
+   ```
+   *Use when:* Analyzing in-memory payloads or unpacked malware.
+
+3. **Emulation (`ae`)**
+   Execute code snippets without a debugger to test logic (e.g., decryption routines).
+   ```bash
+   [0x00401234]> ae 10 @ sym.decrypt_func  # Emulate 10 instructions
+   ```
+   *Use when:* Validating obfuscated algorithms (e.g., **T1140 (Deobfuscate/Decode Files or Information)**).
+
+4. **Rizin CLI Integration (`aaa`, `iz`, `pd`)**
+   Leverage Rizin’s CLI for bulk analysis:
+   ```bash
+   # Analyze all functions, list strings, disassemble 10 instructions:
+   [0x00401234]> aaa; iz; pd 10 @ main
+   ```
+   *Use when:* Automating repetitive tasks (e.g., string extraction for **T1202 (Indirect Command Execution)**).
+
+**Sources:**
+- [Cutter’s Rizin CLI Cheatsheet](https://github.com/rizinorg/cutter/blob/master/docs/rizin-cheatsheet.md)
+- [MITRE ATT&CK: T1112](https://attack.mitre.org/techniques/T1112/) | [T1055.003](https://attack.mitre.org/techniques/T1055/003/)
+
+### Adversary Emulation & Red-Team Perspective
+
+From an adversary’s perspective, **46-cutter-windows** (a Rizin-based binary rewriter) is a stealthy tool for in-memory payload manipulation, enabling evasion of static and behavioral detection. Attackers leverage it to **modify compiled binaries at runtime**, stripping or altering signatures, obfuscating strings, or injecting malicious code without touching disk—critical for bypassing EDR/AV heuristics.
+
+**Concrete TTPs:**
+- **T1620 (Reflective Code Loading):** Use 46-cutter to rewrite a legitimate DLL (e.g., `amsi.dll`) in memory, injecting a reflective loader that executes shellcode while preserving the original file’s hash. This avoids disk artifacts and evades signature-based detection.
+- **T1564.003 (Hide Artifacts: Hidden Window):** Rewrite a benign process (e.g., `explorer.exe`) to spawn a hidden window (`SW_HIDE`) hosting a Cobalt Strike beacon, masking C2 communications behind legitimate GUI activity.
+
+**Artifacts & Evasion:**
+- **Artifacts:** Memory-resident hooks (e.g., modified IAT/EAT entries), anomalous process memory regions (e.g., `MEM_PRIVATE` with `PAGE_EXECUTE_READWRITE`), and mismatched module hashes (detectable via `Get-Process | Select Modules` in PowerShell).
+- **Evasion:** Attackers may:
+  - Use **T1497.003 (Virtualization/Sandbox Evasion: Time Based)** by delaying execution until after sandbox analysis completes.
+  - Combine with **T1134.004 (Access Token Manipulation: Parent PID Spoofing)** to masquerade rewritten processes as children of trusted services (e.g., `svchost.exe`).
+
+**Sources:**
+- [MITRE ATT&CK: T1620](https://attack.mitre.org/techniques/T1620/)
+- [SpecterOps: In-Memory Evasion Techniques](https://posts.specterops.io/) (e.g., "Bring Your Own Land" research)
+
 ## Sources
 Claim → source mapping (all URLs are official/authoritative):
 
@@ -278,3 +336,10 @@ Claim → source mapping (all URLs are official/authoritative):
 - https://www.fireeye.com/blog/threat-research/2020/03/suspicious-processes-indicative-of-security-tool-disabling.html
 
 <!-- cyberlab-enriched: v4 -->
+- https://github.com/rizinorg/cutter/blob/master/docs/rizin-cheatsheet.md
+- https://attack.mitre.org/techniques/T1112/
+- https://attack.mitre.org/techniques/T1055/003/
+- https://attack.mitre.org/techniques/T1620/
+- https://posts.specterops.io/
+
+<!-- cyberlab-enriched: v5 -->
