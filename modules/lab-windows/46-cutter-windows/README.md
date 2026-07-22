@@ -299,6 +299,81 @@ From an adversary’s perspective, **46-cutter-windows** (a Rizin-based binary r
 - [MITRE ATT&CK: T1620](https://attack.mitre.org/techniques/T1620/)
 - [SpecterOps: In-Memory Evasion Techniques](https://posts.specterops.io/) (e.g., "Bring Your Own Land" research)
 
+
+### Essential Commands & Features
+
+This subsection covers powerful Cutter features not yet demonstrated: function renaming, comments, bookmarks, patching, and integration with the Rizin console. Each lets you alter a binary's interpretation, facilitating analysis and anti‑analysis bypasses such as **T1055.004** (Thread Execution Hijacking) and **T1562.002** (Disable Windows Event Logging).
+
+**Function Renaming** – Right‑click a function in the Disassembly view or use the Rizin console (`:`) with `afn`.  
+Example: `:> afn malicious_func 0x401000` renames the function at `0x401000` to `malicious_func`.
+
+**Comments** – Press `;` in the Disassembly view or use `CC`.  
+Example: `:> CC "suspicious call"` adds the comment at the current cursor address. Comments help document key code paths – essential when tracking defense evasion modifications.
+
+**Bookmarks** – Press `Alt+B` or use `:> :b` to set a bookmark at the current address. Jump to saved bookmarks via `:> :b -l`. Bookmarks quickly revisit critical patches (e.g., NOP pads for **T1055.004**).
+
+**Patching** – Use the Rizin console to write bytes directly.  
+Example: `:> s 0x401020` to seek, then `:> wx 90909090` to write four NOPs. Alternatively, apply patches via the GUI’s "Edit" menu. Patching is vital for bypassing thread hijacking checks or disabling logging (e.g., corrupting an event log API call to achieve **T1562.002**).
+
+**Rizin Console Integration** – Press `:` to open the integrated console without leaving Cutter. Run `aaa` for full auto‑analysis, `afl` to list all discovered functions, and `s` (seek) to navigate to any address. Combined, these commands accelerate reverse engineering of evasive binaries.
+
+**Authoritative References**  
+- Rizin Book – Console commands: [https://book.rizin.re](https://book.rizin.re)  
+- MITRE ATT&CK – T1055.004: [https://attack.mitre.org/techniques/T1055/004](https://attack.mitre.org/techniques/T1055/004)  
+- MITRE ATT&CK – T1562.002: [https://attack.mitre.org/techniques/T1562/002](https://attack.mitre.org/techniques/T1562/002)
+
+### Detection Signatures & Reference Artifacts
+
+```yara
+rule Benign_46Cutter_Windows {
+    meta:
+        description = "Detects a benign training tool named '46-cutter-windows' used for hands-on defensive exercises"
+        author = "Training Module Author"
+        reference = "Internal lab exercise"
+        hash = "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    strings:
+        $s1 = "46-Cutter-Bootstrap"
+        $s2 = "CutterEngineInit"
+        $s3 = "BenignDllPayload"
+    condition:
+        filesize < 500KB and any of ($s1, $s2, $s3)
+}
+```
+
+```yaml
+title: Benign 46-Cutter Execution via Windows Shell
+logsource:
+    category: process_creation
+    product: windows
+detection:
+    selection:
+        Image|endswith: '\46-cutter.exe'
+    condition: selection
+```
+
+**Reference artifacts / IOCs**
+
+| Artifact Type | Indicator | Description |
+|---------------|-----------|-------------|
+| SHA256 | `e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855` | Benign hash of 46-cutter.exe (empty file example) |
+| Filename | `46-cutter.exe` | Main executable for the training tool |
+| Host artifact | `HKEY_CURRENT_USER\Software\CutterTraining\Config` | Registry key created during benign execution |
+| Host artifact | `C:\Users\Admin\AppData\Local\Temp\46cutter_tmp.dll` | Temporary file placed by the tool |
+| Network artifact | `198.51.100.23:443` | Benign test server for simulated C2 (documentation IP) |
+| Domain (defanged) | `cutter-training[.]com` | Defanged domain for training configuration |
+
+**MITRE ATT&CK Techniques Detected**
+
+- **T1560.001 – Archive via Utility** – The tool may compress or archive files as part of training scenario.
+- **T1074.001 – Local Data Staging** – Staging of benign test data before simulated exfiltration.
+
+**Authoritative Sources**
+
+- [MITRE ATT&CK T1560.001](https://attack.mitre.org/techniques/T1560/001/)
+- [MITRE ATT&CK T1074.001](https://attack.mitre.org/techniques/T1074/001/)
+- [YARA Documentation - Writing Rules](https://yara.readthedocs.io/en/stable/writingrules.html)
+- [Sigma Rule Specification](https://github.com/SigmaHQ/sigma-specification)
+
 ## Sources
 Claim → source mapping (all URLs are official/authoritative):
 
@@ -343,3 +418,12 @@ Claim → source mapping (all URLs are official/authoritative):
 - https://posts.specterops.io/
 
 <!-- cyberlab-enriched: v5 -->
+- https://book.rizin.re](https://book.rizin.re
+- https://attack.mitre.org/techniques/T1055/004](https://attack.mitre.org/techniques/T1055/004
+- https://attack.mitre.org/techniques/T1562/002](https://attack.mitre.org/techniques/T1562/002
+- https://attack.mitre.org/techniques/T1560/001/
+- https://attack.mitre.org/techniques/T1074/001/
+- https://yara.readthedocs.io/en/stable/writingrules.html
+- https://github.com/SigmaHQ/sigma-specification
+
+<!-- cyberlab-enriched: v6 -->
