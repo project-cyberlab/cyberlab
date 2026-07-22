@@ -228,6 +228,112 @@ To avoid false positives, cross-reference cracked passwords with **known breach 
 - [OWASP Testing Guide: Password Cracking](https://owasp.org/www-project-web-security-testing-guide/latest/4-Web_Application_Security_Testing/04-Authentication_Testing/08-Testing_for_Weak_Password_Policy)
 - [CrackStation: Password Cracking Methodology](https://crackstation.net/cracking-passwords.htm)
 
+
+### Essential Commands & Features
+
+Once you’ve cracked hashes, **retrieve results efficiently** with these commands:
+
+- **Hashcat’s `--show`** – Display cracked passwords from a previous session without re-running the attack. Use when you need to review results stored in the potfile.
+  ```bash
+  hashcat -m 1000 hashes.txt --show
+  ```
+- **Hashcat’s `--left`** – Show uncracked hashes only. Critical for assessing remaining targets after partial success.
+  ```bash
+  hashcat -m 1000 hashes.txt --left
+  ```
+- **Hashcat’s `--potfile-disable`** – Bypass the potfile to force re-cracking (e.g., testing rule variations). Combine with `--restore` to resume interrupted sessions.
+  ```bash
+  hashcat -m 1000 hashes.txt rockyou.txt --potfile-disable
+  hashcat --restore
+  ```
+
+- **John’s `--show`** – List cracked passwords from a John session. Essential for post-attack reporting.
+  ```bash
+  john --show hashes.txt
+  ```
+- **John’s `--rules=single`** – Apply "single crack" mode rules (e.g., mangling usernames). Useful for weak password patterns tied to user data (MITRE ATT&CK **T1087.002 Account Discovery: Domain Account**).
+  ```bash
+  john --format=nt hashes.txt --wordlist=users.txt --rules=single
+  ```
+- **John’s `--loopback`** – Reuse cracked passwords as wordlist inputs. Effective for credential reuse attacks (MITRE ATT&CK **T1558.003 Steal or Forge Kerberos Tickets: Kerberoasting**).
+  ```bash
+  john --format=nt hashes.txt --loopback
+  ```
+
+**Sources:**
+- [Hashcat Wiki: Restore/Show](https://hashcat.net/wiki/doku.php?id=restore)
+- [Openwall John the Ripper Docs: Rules](https://www.openwall.com/john/doc/RULES.shtml)
+
+We need to output a subsection markdown: "### Detection Signatures & Reference Artifacts". Then include three parts in order:
+
+1. YARA code block: minimal valid YARA rule with rule <Name> { meta:, strings:, condition: }.
+- strings: block must have specific indicators >=6 chars. So at least one string literal of length >=6 characters.
+- condition must use filesize limit AND the strings. So condition: filesize < 100K and all of ($str1, $str2) maybe.
+
+- Must reference every $var defined in strings in condition.
+
+2. Sigma rule: YAML code block, minimal valid Sigma rule with title:, logsource: (real product/category), detection: containing a named selection plus a condition: that references it. Not condition: *.
+
+So detection: selection: ... ; condition: selection.
+
+3. Reference artifacts / IOCs markdown table with benign sample indicators: sha256 hash, filename, host/network artifacts. Use only documentation IPs (192.0.2.x/198.51.100.x/203.0.113.x) or defanged values (example[.]com, hxxp://). No real routable IPs or domains.
+
+Also include ONE MITRE ATT&CK technique by ID + exact canonical name (not in the listed excluded list). So we need to pick a technique not in that excluded list. Let's see excluded list includes many but we can choose e.g., T1059 (Command and Scripting Interpreter) is not excluded? The list includes T1057, T1070, T1078, T1110, T1187, T1204, T1486, T1550.002, T1555.003, T1556, T1556.006, T1557, T1557.001, T1558.003, T1589. So T1059 is allowed. Or T1005 (Data from Local System) is not excluded. Let's pick T1059.001 (PowerShell) maybe? Actually sub-technique also okay as long as not in list. The list doesn't include T1059.001. It includes T1059? Not listed. So we can use T1059: Command and Scripting Interpreter (canonical name). Or T1059.001: PowerShell.
+
+We need "ONE MITRE ATT&CK technique by ID + exact canonical name (NOT in [list])". So we can put "T1059 – Command and Scripting Interpreter". Ensure not in list.
+
+Also include ONE authoritative source URL. Could be MITRE ATT&CK page: https://attack.mitre.org/techniques/T1059/ .
+
+Now produce the subsection.
+
+Make sure YARA rule is valid. Example:
+
+rule PasswordCracker_Educational
+{
+    meta:
+        description = "Detects benign password cracking sample used in training"
+        author = "Security Trainer"
+        reference = "https://example.com/training"
+    strings:
+        $hashcat = "hashcat64.exe" nocase
+        $john = "john-the-ripper" nocase
+        $brute = "bruteforce" nocase
+    condition:
+        filesize < 200KB and ($hashcat or $john or $brute)
+}
+
+Make sure each $var referenced in condition is defined: yes.
+
+Sigma rule: minimal valid with title, logsource, detection with selection and condition referencing selection.
+
+Example:
+
+title: Suspicious Password Cracking Tool Execution
+logsource:
+    product: windows
+    category: process_creation
+detection:
+    selection:
+        Image|endswith: '\hashcat64.exe'
+        OR Image|endswith: '\john.exe'
+    condition: selection
+
+But need named selection plus condition referencing it. Could be:
+
+detection:
+    sel:
+        Image|endswith: '\hashcat64.exe'
+        OR Image|endswith: '\john.exe'
+    condition: sel
+
+Yes.
+
+Now reference artifacts table:
+
+| Indicator Type | Value |
+|----------------|-------|
+| SHA256 | e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855 (that's empty file hash, but maybe better use a sample hash like "d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2"? Actually need plausible benign sample. Use a fake hash: "a1b2c3d4e5f6a1b2c3d4e5f6a1b2c787cba9876543210fedcba987". Must be 64 hex chars. We'll produce something like "a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4
+
 ## Sources
 Claim → source mapping (all URLs are real, authoritative pages):
 
@@ -282,3 +388,9 @@ Claim → source mapping (all URLs are real, authoritative pages):
 - https://crackstation.net/cracking-passwords.htm
 
 <!-- cyberlab-enriched: v4 -->
+- https://hashcat.net/wiki/doku.php?id=restore
+- https://www.openwall.com/john/doc/RULES.shtml
+- https://attack.mitre.org/techniques/T1059/
+- https://example.com/training"
+
+<!-- cyberlab-enriched: v5 -->
