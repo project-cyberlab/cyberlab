@@ -241,52 +241,15 @@ log2timeline.py --workers 4 timeline.plaso evidence.raw
 - [Plaso Advanced Usage (GitLab)](https://plaso.readthedocs.io/en/latest/sources/user/Advanced-usage.html)
 - [DFIR Review: Plaso Performance Tuning](https://www.dfir.review/2022/03/15/plaso-performance-tuning/)
 
-### Detection Signatures & Reference Artifacts
+### Detection Guidance
 
-```yara
-rule Detect_SystemInfo_Script {
-    meta:
-        description = "Detects benign scripts that invoke systeminfo and timeline analysis commands for educational timeline analysis exercise."
-        author = "Defensive Training Module"
-        reference = "https://yara.readthedocs.io/en/stable/writingrules.html"
-        hash = "abcd1234ef567890ab1234cd567890ef12345678ab1234cd567890ef12345678ab"
-    strings:
-        $s1 = "systeminfo" nocase
-        $s2 = "timeline" nocase
-    condition:
-        filesize < 100KB and 1 of ($s1, $s2)
-}
-```
+This module teaches a forensic/analysis skill rather than a specific malware family, so no single community detection rule maps to it directly. For detection engineering on the artifacts examined here, use these authoritative sources:
 
-```yaml
-title: Detection of SystemInfo Command Usage via Command Line
-id: a1b2c3d4-e5f6-7890-abcd-ef1234567890
-logsource:
-    category: process_creation
-    product: windows
-detection:
-    selection:
-        CommandLine|contains: 'systeminfo'
-    condition: selection
-```
+- Sigma detection rules (log-based): https://github.com/SigmaHQ/sigma
+- YARA signatures (file/memory): https://github.com/Neo23x0/signature-base
+- MITRE ATT&CK (map findings to techniques + real-world Procedure Examples): https://attack.mitre.org/
 
-**Reference artifacts / IOCs**
-
-| Artifact Type | Indicator |
-|---------------|-----------|
-| File SHA256   | `abcd1234ef567890ab1234cd567890ef12345678ab1234cd567890ef12345678ab` |
-| Filename      | `analyze_timeline.ps1` |
-| Host artifact | Process creation event with command line containing `systeminfo` (e.g., Sysmon Event ID 1) |
-| Network artifact | Connection to 192[.]0[.]2[.]2 (documentation-only IP) over TCP/443 for downloading a benign timeline analysis script |
-| Domain        | timeline-analysis[.]local (non‑routable, lab‑internal) |
-
-**MITRE ATT&CK Techniques Covered**
-- [T1082 – System Information Discovery](https://attack.mitre.org/techniques/T1082/)
-- [T1057 – Process Discovery](https://attack.mitre.org/techniques/T1057/)
-
-**Authoritative Sources**
-- YARA documentation: <https://yara.readthedocs.io/en/stable/writingrules.html>
-- Sigma specification & rule format: <https://github.com/SigmaHQ/sigma-specification>
+When your analysis surfaces an indicator (hash, path, registry key, network artifact), pivot to the matching ATT&CK technique for documented real-world usage, and search the Sigma/YARA repos above for a maintained rule covering it.
 
 ## Sources
 Claim → source mapping (all URLs are authoritative tool/vendor/standards pages):

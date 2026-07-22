@@ -209,54 +209,15 @@ This is essential for scanning documents or executables that conceal malicious d
 - MITRE T1552.001: https://attack.mitre.org/techniques/T1552/001/  
 - MITRE T1560.001: https://attack.mitre.org/techniques/T1560/001/
 
-### Detection Signatures & Reference Artifacts
+### Detection Guidance
 
-```yara
-rule CyberChef_Recipe_Detection {
-    meta:
-        description = "Detects files containing CyberChef recipe patterns (benign lab sample)"
-        author = "Training Module"
-        date = "2025-01-01"
-        reference = "https://gchq.github.io/CyberChef/"
-    strings:
-        $recipe_pattern = "From_Base64" ascii wide nocase
-        $recipe_pattern2 = "To_Hex" ascii wide nocase
-        $recipe_keyword = "CyberChef" ascii wide nocase
-    condition:
-        filesize < 10KB and any of them
-}
-```
+This module teaches a forensic/analysis skill rather than a specific malware family, so no single community detection rule maps to it directly. For detection engineering on the artifacts examined here, use these authoritative sources:
 
-```yaml
-title: CyberChef Recipe Execution via CLI
-id: d2c3e8f4-1a2b-4c5d-9e6f-7a8b9c0d1e2f
-status: test
-description: Detects execution of CyberChef command-line interface with recipe arguments (benign lab sample)
-author: Training Module
-logsource:
-    product: windows
-    category: process_creation
-detection:
-    selection:
-        CommandLine|contains: "cyberchef"
-        CommandLine|contains: "recipe"
-    condition: selection
-falsepositives:
-    - Legitimate administrative use
-level: low
-```
+- Sigma detection rules (log-based): https://github.com/SigmaHQ/sigma
+- YARA signatures (file/memory): https://github.com/Neo23x0/signature-base
+- MITRE ATT&CK (map findings to techniques + real-world Procedure Examples): https://attack.mitre.org/
 
-**Reference artifacts / IOCs**
-
-| Indicator Type | Value |
-|----------------|-------|
-| SHA256 hash (benign lab sample) | `e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855` |
-| Filename | `lab_cyberchef_recipe.recipe` |
-| Host/Network artifact | `192.0.2.1` (internal lab IP) |
-| Host/Network artifact | `recipe.example[.]com` (defanged) |
-
-**MITRE ATT&CK Reference:** T1132 Data Encoding – URL: https://attack.mitre.org/techniques/T1132/
-
+When your analysis surfaces an indicator (hash, path, registry key, network artifact), pivot to the matching ATT&CK technique for documented real-world usage, and search the Sigma/YARA repos above for a maintained rule covering it.
 
 ### Essential Commands & Features
 To further enhance your skills with CyberChef and base64dump.py, it's crucial to understand additional essential commands and features. For CyberChef CLI, the `--input`, `--output`, and `--mods` flags are particularly useful. The `--input` flag allows you to specify the input file, while the `--output` flag specifies the output file. The `--mods` flag enables you to list available modules. For example, `cyberchef --input input.txt --output output.txt --mods` demonstrates how to use these flags together. When performing tasks related to [T1588: Obtain Capabilities](https://attack.mitre.org/techniques/T1588/) or [T1590: Gather Technical Data](https://attack.mitre.org/techniques/T1590/), these flags can be invaluable for managing and analyzing data. 

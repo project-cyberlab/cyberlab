@@ -220,40 +220,15 @@ For **Obfuscated Files or Information (T1027.006: HTML Smuggling)**, inspect net
 ### Essential Commands & Features
 To further enhance analysis and navigation in radare2, several essential commands and features can be utilized. The `afl` command is used to list all functions in the binary, while `pdf @func` can be used to disassemble a specific function. For example, `pdf @main` will disassemble the main function. The `s` command is used to seek to a specific offset, and `V!` can be used to enter visual mode. The `px` command is used to display the hexdump of a region, and `iS` can be used to display section information. The `izz` command is used to analyze and display a string, and `is~` can be used to search for a string. These commands are particularly useful when analyzing malware that utilizes techniques such as [T1588: Obtain Capabilities](https://attack.mitre.org/techniques/T1588/) and [T1595: Active Scanning](https://attack.mitre.org/techniques/T1595/), where deep analysis and navigation of the binary are required. For more information on radare2 and its features, refer to the official radare2 documentation at https://book.rada.re/ and the radare2 GitHub page at https://github.com/radareorg/radare2.
 
-### Detection Signatures & Reference Artifacts
-```yara
-rule radare2_sample {
-  meta:
-    description = "Detects radare2 sample"
-    author = "Training Module"
-  strings:
-    $a = "radare2" nocase
-    $b = "r2core" nocase
-  condition:
-    filesize < 10MB and ($a or $b)
-}
-```
-```yaml
-title: Radare2 Sample Detection
-logsource:
-  product: linux
-  category: process_creation
-detection:
-  selection:
-    radare2_exec:
-      Image|endswith: 'radare2'
-  condition:
-    selection | contains: 'radare2_exec'
-```
-**Reference artifacts / IOCs**
-| Indicator | Description | Artifact |
-| --- | --- | --- |
-| sha256 | Sample hash | 4f3a1c2d5b6a7e8f9c0d1a2b3c4d5e6f7a8b9c0d1 |
-| filename | Sample filename | radare2_sample.exe |
-| host | Network artifact | 192.0.2.1:80 |
-| network | URL artifact | hxxp://example[.]com/radare2/download |
-This detection is related to the MITRE ATT&CK technique [T1113 - Screen Capture](https://attack.mitre.org/techniques/T1113/). For more information, visit the [MITRE ATT&CK](https://attack.mitre.org/) website: https://attack.mitre.org/
+### Detection Guidance
 
+This module teaches a forensic/analysis skill rather than a specific malware family, so no single community detection rule maps to it directly. For detection engineering on the artifacts examined here, use these authoritative sources:
+
+- Sigma detection rules (log-based): https://github.com/SigmaHQ/sigma
+- YARA signatures (file/memory): https://github.com/Neo23x0/signature-base
+- MITRE ATT&CK (map findings to techniques + real-world Procedure Examples): https://attack.mitre.org/
+
+When your analysis surfaces an indicator (hash, path, registry key, network artifact), pivot to the matching ATT&CK technique for documented real-world usage, and search the Sigma/YARA repos above for a maintained rule covering it.
 
 ### Essential Commands & Features
 

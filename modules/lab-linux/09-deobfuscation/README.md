@@ -394,50 +394,15 @@ https://gchq.github.io/CyberCheF/
 *xortool usage and `-b` flag:*  
 https://github.com/hellman/xortool
 
-### Detection Signatures & Reference Artifacts
+### Detection Guidance
 
-#### YARA Rule
-```yara
-rule Detect_Deobfuscation_Base64 {
-    meta:
-        description = "Detects common base64 decode functions used in script deobfuscation"
-        author = "Training Module"
-        date = "2025-01-01"
-        reference = "https://yara.readthedocs.io/"
-    strings:
-        $s1 = "System.Text.Encoding]::UTF8.GetString" ascii wide nocase
-        $s2 = "Convert]::FromBase64String" ascii wide nocase
-    condition:
-        filesize < 10MB and any of ($s1, $s2)
-}
-```
+This module teaches a forensic/analysis skill rather than a specific malware family, so no single community detection rule maps to it directly. For detection engineering on the artifacts examined here, use these authoritative sources:
 
-#### Sigma Rule
-```yaml
-title: Detection of Base64 Deobfuscation Attempts
-logsource:
-    category: process_creation
-    product: windows
-detection:
-    selection_b64:
-        CommandLine|contains|all:
-            - 'FromBase64String'
-            - 'UTF8.GetString'
-    condition: selection_b64
-```
+- Sigma detection rules (log-based): https://github.com/SigmaHQ/sigma
+- YARA signatures (file/memory): https://github.com/Neo23x0/signature-base
+- MITRE ATT&CK (map findings to techniques + real-world Procedure Examples): https://attack.mitre.org/
 
-#### Reference artifacts / IOCs
-| sha256 | filename | host/network artifacts |
-|--------|----------|------------------------|
-| 4827b8e9c8a9f0d1e2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d7e8f9a0b1c2d3e4f5 | benign_script.ps1 | 192.0.2.10, hxxp://example[.]com/tools |
-
-#### MITRE ATT&CK Techniques
-- T1059.005 – Command and Scripting Interpreter: Visual Basic
-- T1059.007 – Command and Scripting Interpreter: JavaScript
-
-#### References
-- https://attack.mitre.org/techniques/T1059/005/
-- https://attack.mitre.org/techniques/T1059/007/
+When your analysis surfaces an indicator (hash, path, registry key, network artifact), pivot to the matching ATT&CK technique for documented real-world usage, and search the Sigma/YARA repos above for a maintained rule covering it.
 
 ## Sources
 The following authoritative sources were used to verify all factual claims in this module. Each source is cited inline where applicable.

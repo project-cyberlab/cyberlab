@@ -275,51 +275,15 @@ Mastering **The Sleuth Kit (TSK)** requires familiarity with its most powerful y
 - [TSK Command Reference (GitLab)](https://gitlab.com/sleuthkit/sleuthkit/-/wikis/Command-Line-Tools)
 - [DFIR Review: TSK Deep Dive](https://www.dfir.review/2021/03/15/sleuthkit-forensic-analysis/)
 
-### Detection Signatures & Reference Artifacts
+### Detection Guidance
 
-```yara
-rule SleuthKit_Training_Sample {
-   meta:
-      description = "Detects a benign educational disk image used in Sleuth Kit mastery training"
-      author = "Defensive Training Team"
-      reference = "https://sleuthkit.org"
-      date = "2024-01-01"
-   strings:
-      $s1 = "SLEUTHKIT_TRAINING" ascii wide nocase
-      $s2 = "FORENSIC_DISK_IMAGE" ascii wide nocase
-   condition:
-      filesize < 10MB and ($s1 or $s2)
-}
-```
+This module teaches a forensic/analysis skill rather than a specific malware family, so no single community detection rule maps to it directly. For detection engineering on the artifacts examined here, use these authoritative sources:
 
-```yaml
-title: Potential Use of Sleuth Kit Tools for Data Collection – Training Exercise
-logsource:
-   category: process_creation
-   product: windows
-detection:
-   selection:
-      CommandLine|contains: 'sleuthkit_mastery_script.bat'
-   condition: selection
-```
+- Sigma detection rules (log-based): https://github.com/SigmaHQ/sigma
+- YARA signatures (file/memory): https://github.com/Neo23x0/signature-base
+- MITRE ATT&CK (map findings to techniques + real-world Procedure Examples): https://attack.mitre.org/
 
-**Reference Artifacts / IOCs**
-
-| sha256 hash                                                           | filename                    | Host / Network Artifacts                                      |
-|-----------------------------------------------------------------------|-----------------------------|---------------------------------------------------------------|
-| `a1b2c3d4e5f60718290a0b1c2d3e4f5061728390a1b2c3d4e5f60718290a0b1c` | `sleuthkit_mastery_disk.img`| File: `C:\Training\sleuthkit_mastery_disk.img`               |
-|                                                                       |                             | Network: `hxxp://192.0.2.1/sleuthkit-mastery-sample`         |
-|                                                                       | `sleuthkit_mastery_script.bat`| Process: `cmd.exe` with command line containing `sleuthkit_mastery_script.bat` |
-
-**MITRE ATT&CK Techniques Covered**  
-- **T1039 – Data from Network Shared Drive** (adversaries may use forensic tools to collect data from mounted shares)  
-- **T1020 – Automated Exfiltration** (automated collection and staging of data for exfiltration)
-
-**References**  
-- https://attack.mitre.org/techniques/T1039/  
-- https://attack.mitre.org/techniques/T1020/  
-- https://yara.readthedocs.io/en/stable/  
-- https://sigmahq.io/docs/
+When your analysis surfaces an indicator (hash, path, registry key, network artifact), pivot to the matching ATT&CK technique for documented real-world usage, and search the Sigma/YARA repos above for a maintained rule covering it.
 
 ## Sources
 Claim → source mapping (all URLs are real, authoritative pages):
