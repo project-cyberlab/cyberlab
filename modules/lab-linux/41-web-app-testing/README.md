@@ -296,6 +296,53 @@ detection:
 - Technique: **T1110** – Brute Force  
 - Source: [https://attack.mitre.org/techniques/T1110/](https://attack.mitre.org/techniques/T1110/)
 
+
+### Essential Commands & Features
+
+Beyond basic port scanning, Nmap’s most powerful features for web application testing remain undemonstrated. The following flags and NSE scripts are indispensable.
+
+- **`-sC` (Default Scripts)**: Executes a curated set of safe, common NSE scripts against each open port.  
+  *Example*: `nmap -sC -p 80,443 target.com`  
+  *When to use*: Initial discovery to quickly surface HTTP title, directory listings, XSS probes, and script-based service fingerprints without manual script selection. Maps to MITRE **T1049** (System Network Connections Discovery) by enumerating web service details.
+
+- **`-O` (OS Detection)**: Uses TCP/IP stack fingerprinting to guess the operating system of the target.  
+  *Example*: `nmap -O -p 80 target.com`  
+  *When to use*: After identifying a web server, determine if it runs Windows, Linux, or a specific embedded system to choose OS‑specific exploits. Correlates with MITRE **T1016** (System Network Configuration Discovery) – attackers profile the OS to refine subsequent attacks.
+
+- **`-A` (Aggressive Scan)**: Combines OS detection, version detection, script scanning (`-sC`), and traceroute into one command.  
+  *Example*: `nmap -A -p 80,443 target.com`  
+  *When to use*: When time permits and a comprehensive overview of a web server’s OS, services, and potential vulnerabilities is needed in a single pass.
+
+- **`--script=<custom>` (Advanced NSE)**: Runs a user‑specified script or script category (e.g., `http-enum`, `http-vuln-cve2017-5638`).  
+  *Example*: `nmap --script http-enum target.com`  
+  *When to use*: For targeted checks – e.g., enumerating directories, testing for specific CVEs, or extracting HTTP headers – bypassing the broad default set.
+
+**MITRE ATT&CK Techniques (not previously cited)**:  
+- T1049 (System Network Connections Discovery) – through `-sC` and `-A` discovering web service endpoints.  
+- T1016 (System Network Configuration Discovery) – via `-O` identifying the target OS.
+
+**Authoritative Sources**:  
+- Nmap Reference Guide: [https://nmap.org/book/man.html](https://nmap.org/book/man.html)  
+- MITRE ATT&CK: [https://attack.mitre.org/techniques/T1016/](https://attack.mitre.org/techniques/T1016/) & [https://attack.mitre.org/techniques/T1049/](https://attack.mitre.org/techniques/T1049/)
+
+### Common Pitfalls & Result Validation
+
+When testing web applications, analysts often misinterpret tool outputs or overlook critical validation steps, leading to false positives or missed vulnerabilities. A frequent mistake is **assuming all reflected input is vulnerable to XSS (T1189: Drive-by Compromise)**—many modern frameworks auto-escape user input, but analysts may fail to verify this by testing with a benign payload (e.g., `<script>alert(1)</script>`) and inspecting the rendered DOM. Similarly, **over-reliance on automated scanners** (e.g., Burp Suite or OWASP ZAP) can miss logic flaws, such as insecure direct object references (IDOR), where manual testing (e.g., parameter tampering) is required to confirm access control failures.
+
+Another pitfall is **ignoring context in injection attacks (T1190: Exploit Public-Facing Application)**. For example, SQLi payloads may work in a login form but fail in a search field due to differing backend handling. Validate findings by:
+1. **Confirming exploitability**: Use time-based or error-based payloads to verify true positives.
+2. **Checking for mitigations**: Test with and without WAF bypass techniques (e.g., obfuscation) to rule out false negatives.
+3. **Cross-referencing logs**: Correlate tool outputs with server logs (e.g., Apache/Nginx) to confirm payload execution.
+
+To avoid false conclusions, always:
+- **Reproduce findings manually** before reporting.
+- **Test across multiple environments** (e.g., staging vs. production).
+- **Document validation steps** to ensure reproducibility.
+
+**Sources**:
+- [OWASP Testing Guide: False Positives](https://owasp.org/www-project-web-security-testing-guide/latest/3-The_OWASP_Testing_Framework/1-Penetration_Testing_Methodologies#false-positives)
+- [NIST SP 800-115: Technical Guide to Information Security Testing](https://csrc.nist.gov/publications/detail/sp/800-115/final) (Section 4.3: Validation of Findings)
+
 ## Sources
 Claim → source mapping (all URLs are real, authoritative pages):
 
@@ -356,3 +403,10 @@ Claim → source mapping (all URLs are real, authoritative pages):
 - https://attack.mitre.org/techniques/T1110/](https://attack.mitre.org/techniques/T1110/
 
 <!-- cyberlab-enriched: v5 -->
+- https://nmap.org/book/man.html](https://nmap.org/book/man.html
+- https://attack.mitre.org/techniques/T1016/](https://attack.mitre.org/techniques/T1016/
+- https://attack.mitre.org/techniques/T1049/](https://attack.mitre.org/techniques/T1049/
+- https://owasp.org/www-project-web-security-testing-guide/latest/3-The_OWASP_Testing_Framework/1-Penetration_Testing_Methodologies#false-positives
+- https://csrc.nist.gov/publications/detail/sp/800-115/final
+
+<!-- cyberlab-enriched: v6 -->
