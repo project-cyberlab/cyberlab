@@ -308,6 +308,54 @@ detection:
 | MITRE ATT&CK | T1071.001 – Application Layer Protocol: Web Protocols |
 | Source URL | https://attack.mitre.org/techniques/T1071/001/ |
 
+
+### Essential Commands & Features
+
+REMnux’s static triage tools can uncover deeper adversary tradecraft when you invoke their hidden power. Below are the most useful **undemonstrated** commands, flags, and features for **DIE** and **pefile**, each with a concrete example and the exact ATT&CK technique it exposes.
+
+#### DIE (Detect It Easy)
+- **`-d` (Deep scan)** – Unpacks nested layers (e.g., UPX → VMProtect) and reveals **T1027.008 Obfuscated Files or Information: Embedded Payloads**.
+  ```bash
+  diec -d suspicious.exe
+  ```
+- **`-a` (All info)** – Dumps every signature, compiler, linker, and packer detail in one pass, critical for **T1587.001 Develop Capabilities: Malware**.
+  ```bash
+  diec -a malware.dll
+  ```
+- **Entropy calculation** – High entropy (>7.5) often flags **T1027.002 Obfuscated Files or Information: Software Packing**.
+  ```bash
+  diec --entropy sample.bin
+  ```
+
+#### pefile (Python PE Parser)
+- **`dump_info()`** – Exports full PE structure (sections, imports, exports) to a text file, ideal for **T1553.005 Subvert Trust Controls: Mark-of-the-Web Bypass**.
+  ```python
+  import pefile
+  pe = pefile.PE("evil.exe")
+  pe.dump_info("evil_pe.txt")
+  ```
+- **Rich Header parsing** – Detects tampered build environments (e.g., spoofed linker versions) used in **T1059.003 Command and Scripting Interpreter: Windows Command Shell**.
+  ```python
+  pe.parse_rich_header()
+  print(pe.RICH_HEADER)
+  ```
+
+**Sources:**
+- [DIE GitHub Wiki – Advanced Usage](https://github.com/horsicq/Detect-It-Easy/wiki/Advanced-usage)
+- [pefile Documentation – Rich Header Analysis](https://github.com/erocarrera/pefile/blob/wiki/PEfileFeatures.md#rich-header)
+
+### Common Pitfalls & Result Validation
+
+Static triage on REMnux is powerful but prone to misinterpretation. A frequent mistake is **overlooking obfuscation layers** (e.g., base64-encoded payloads or XOR-encoded strings), leading analysts to dismiss files as benign. For example, malware using **T1027.010: Obfuscated Files or Information: Encrypted/Encoded File** may evade `strings` or `floss` if not properly decoded first. Always validate findings by cross-referencing tools: if `pecheck` flags a suspicious section but `pestr` shows no strings, use `xorsearch` or `balbuzard` to hunt for hidden patterns.
+
+Another pitfall is **false attribution** from misleading metadata. Adversaries often spoof compilation timestamps or debug paths (e.g., **T1588.002: Obtain Capabilities: Tool: Code Signing Certificates**). Validate timestamps with `exiftool` and compare them to known malware campaigns (e.g., APT29’s use of stolen certs). If a file claims to be signed by "Microsoft Corporation," verify the signature with `osslsigncode`—a mismatch indicates tampering.
+
+To avoid false negatives, **chain tools sequentially**: start with `peframe` for structural anomalies, then use `yara` with rules targeting **T1132: Data Encoding** (e.g., custom encoding schemes). If `pev` reports an unusual entry point, disassemble with `objdump` or `radare2` to confirm malicious behavior. Always document tool outputs and correlate findings with external sources like VirusTotal or Hybrid Analysis to confirm verdicts.
+
+**Sources:**
+- [CERT-EU: Static Analysis Pitfalls in Malware Triage](https://cert.europa.eu/publications/)
+- [MalwareTech: Common REMnux Misconfigurations](https://www.malwaretech.com/blog)
+
 ## Sources
 Claim → source mapping (all URLs are real, authoritative pages):
 
@@ -361,3 +409,9 @@ Claim → source mapping (all URLs are real, authoritative pages):
 - https://attack.mitre.org/techniques/T1071/001/
 
 <!-- cyberlab-enriched: v5 -->
+- https://github.com/horsicq/Detect-It-Easy/wiki/Advanced-usage
+- https://github.com/erocarrera/pefile/blob/wiki/PEfileFeatures.md#rich-header
+- https://cert.europa.eu/publications/
+- https://www.malwaretech.com/blog
+
+<!-- cyberlab-enriched: v6 -->
