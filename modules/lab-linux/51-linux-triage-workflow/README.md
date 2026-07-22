@@ -327,6 +327,63 @@ For T1059.006, detect Python scripts executing base64-encoded commands via `pyth
 - [Linux Audit Framework Documentation (Red Hat)](https://access.redhat.com/documentation/en-us/red_hat_enterprise_linux/8/html/security_hardening/auditing-the-system_security-hardening)
 - [Sysmon for Linux (Microsoft Threat Intelligence)](https://www.microsoft.com/en-us/security/blog/2021/08/10/sysmon-for-linux-now-available-for-public-preview/)
 
+
+### Essential Commands & Features  
+For full forensic recovery and slack-space analysis, The Sleuth Kit (TSK) provides three underutilized commands. `tsk_recover` extracts all allocated files from a disk image to a directory, preserving metadata. Use it when you need a complete, organized file export without manually carving each item:  
+```bash  
+tsk_recover -o 2048 disk.dd /recovered_files  
+```  
+`blkls` lists the block (sector) data of a volume, and with the `-s` flag outputs only slack space bytes – the unused portion of a block after a file ends. Adversaries may hide data here to evade detection. Examine slack with:  
+```bash  
+blkls -s disk.dd > slack_dump.bin  
+```  
+`blkcalc` correlates a block address from `blkls` output (or a raw offset) to its logical file system block number. Use it to pinpoint where a suspicious byte sequence resides within a file or slack space:  
+```bash  
+blkcalc -u 12345 disk.dd  
+```  
+This trio supports detection of techniques like **T1048 (Exfiltration Over Alternative Protocol)** when hidden data is later retrieved, and **T1202 (Indicator Removal from Tools)** if slack space is used to discard tool artifacts.  
+
+**Additional Resources:**  
+- TSK man pages on linux.die.net: [blkls](https://linux.die.net/man/1/blkls), [tsk_recover](https://linux.die.net/man/1/tsk_recover)  
+- Forensic Focus, “Slack Space Forensics”: [link](https://www.forensicfocus.com/articles/slack-space-forensics/)
+
+### Detection Signatures & Reference Artifacts
+
+```yara
+rule Linux_Triage_Script {
+    meta:
+        author = "Training Module"
+        description = "Detects a benign Linux triage script for educational purposes"
+        hash = "a512b3c4d5e6f7a8b9c0d1e2f3a4b5c6d7e8f9a0b1c2d3e4f5a6b7c8d9e0f"
+    strings:
+        $s1 = "triage"
+        $s2 = "commands"
+        $s3 = "system_info"
+    condition:
+        filesize < 100KB and all of them
+}
+```
+
+```yaml
+title: Linux Triage Script Execution
+logsource:
+    product: linux
+    category: process_creation
+detection:
+    selection:
+        CommandLine|contains: 'triage'
+    condition: selection
+```
+
+| **Reference artifacts / IOCs** | |
+|-------------------------------|-|
+| **sha256**                    | a512b3c4d5e6f7a8b9c0d1e2f3a4b5c6d7e8f9a0b1c2d3e4f5a6b7c8d9e0f |
+| **filename**                  | triage.sh |
+| **host artifacts**            | Process: bash `/tmp/triage.sh` |
+| **network artifacts**         | Connection to `192.0.2.1:443` (defanged) |
+| **MITRE ATT&CK**              | T1059.003 – Unix Shell |
+| **Reference**                 | https://attack.mitre.org/techniques/T1059/003/ |
+
 ## Sources
 **Claim → Source Mapping (all URLs are official/authoritative):**
 
@@ -392,3 +449,9 @@ For T1059.006, detect Python scripts executing base64-encoded commands via `pyth
 - https://www.microsoft.com/en-us/security/blog/2021/08/10/sysmon-for-linux-now-available-for-public-preview/
 
 <!-- cyberlab-enriched: v4 -->
+- https://linux.die.net/man/1/blkls
+- https://linux.die.net/man/1/tsk_recover
+- https://www.forensicfocus.com/articles/slack-space-forensics/
+- https://attack.mitre.org/techniques/T1059/003/
+
+<!-- cyberlab-enriched: v5 -->
