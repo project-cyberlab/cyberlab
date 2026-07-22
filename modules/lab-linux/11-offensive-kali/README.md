@@ -340,6 +340,64 @@ Defenders should monitor for unusual TGS requests, unexpected child processes of
 - [MITRE ATT&CK: Kerberoasting (T1558.003)](https://attack.mitre.org/techniques/T1558/003/)
 - [SpecterOps: Kerberoasting in Practice](https://posts.specterops.io/kerberoasting-revisited-d434351bd4d1)
 
+
+### Essential Commands & Features
+To further enhance your Kali Linux skills, it's crucial to master essential commands and features of core tools like nmap. The `-sV` flag is used for service version detection, which can help identify potential vulnerabilities, as seen in the technique [T1588](https://attack.mitre.org/techniques/T1588/) "Obtain Capabilities" and [T1591](https://attack.mitre.org/techniques/T1591/) "Collect Domain Information". For example, `nmap -sV 192.168.1.1` scans for open ports and identifies the service version running on them. OS detection can be performed using the `-O` flag, as in `nmap -O 192.168.1.1`, which attempts to guess the operating system of the target. The `-A` flag enables aggressive scanning, combining `-sV`, `-O`, and other options for a comprehensive scan: `nmap -A 192.168.1.1`. For more advanced scanning, the `--script` option can be used with NSE scripts, such as `nmap --script=vuln 192.168.1.1`. Adjusting the timing of scans can be done with the `-T4` flag for faster execution: `nmap -T4 192.168.1.1`. Understanding these features can significantly improve your scanning capabilities. For more detailed information, visit the official [nmap documentation](https://nmap.org/book/man.html) or [Cybersecurity and Infrastructure Security Agency (CISA)](https://www.cisa.gov/) resources.
+
+### Detection Signatures & Reference Artifacts
+
+```yara
+rule Benign_Kali_Lab_Sample {
+    meta:
+        author = "Training Module"
+        description = "Detects a benign Kali Linux offensive scripting sample used for lab training"
+        date = "2025-04-16"
+        reference = "Internal training lab"
+    strings:
+        $s1 = "#!/bin/bash"
+        $s2 = "nmap -sV"
+        $s3 = "msfconsole"
+    condition:
+        filesize < 100KB and any of ($s1, $s2, $s3)
+}
+```
+
+```yaml
+title: Kali Offensive Tool Command Line Detection
+logsource:
+    category: process_creation
+    product: linux
+detection:
+    selection:
+        CommandLine|contains:
+            - 'nmap'
+            - 'msfconsole'
+            - 'sqlmap'
+            - 'hydra'
+    condition: selection
+```
+
+**Reference artifacts / IOCs**
+
+| Type          | Value                                                               |
+|---------------|---------------------------------------------------------------------|
+| sha256        | b5c7e1d2f3a4b5c6d7e8f9a0b1c2d3e4f5a6b7c8d9e0f1a2b3c4d5e6f7a8b9c |
+| Filename      | offensive_demo.sh                                                   |
+| Host/Network  | Listener: 192.0.2.100:4444, Callback: example[.]com:8080            |
+
+**MITRE ATT&CK Techniques Covered**
+
+- **T1059.004 – Command and Scripting Interpreter: Unix Shell**  
+  [https://attack.mitre.org/techniques/T1059/004/](https://attack.mitre.org/techniques/T1059/004/)
+
+- **T1204.002 – User Execution: Malicious File**  
+  [https://attack.mitre.org/techniques/T1204/002/](https://attack.mitre.org/techniques/T1204/002/)
+
+**Authoritative Sources**
+
+- YARA Documentation: [https://yara.readthedocs.io/](https://yara.readthedocs.io/)  
+- Sigma Specification: [https://github.com/SigmaHQ/sigma-specification](https://github.com/SigmaHQ/sigma-specification)
+
 ## Sources
 Claim → source mapping (all URLs are official tool docs, project repos, MITRE ATT&CK, Microsoft Learn, SANS, or Security Onion docs):
 
@@ -413,3 +471,12 @@ Claim → source mapping (all URLs are official tool docs, project repos, MITRE 
 - https://posts.specterops.io/kerberoasting-revisited-d434351bd4d1
 
 <!-- cyberlab-enriched: v5 -->
+- https://attack.mitre.org/techniques/T1588/
+- https://attack.mitre.org/techniques/T1591/
+- https://www.cisa.gov/
+- https://attack.mitre.org/techniques/T1059/004/](https://attack.mitre.org/techniques/T1059/004/
+- https://attack.mitre.org/techniques/T1204/002/](https://attack.mitre.org/techniques/T1204/002/
+- https://yara.readthedocs.io/](https://yara.readthedocs.io/
+- https://github.com/SigmaHQ/sigma-specification](https://github.com/SigmaHQ/sigma-specification
+
+<!-- cyberlab-enriched: v6 -->
