@@ -323,6 +323,43 @@ detection:
 - **MITRE ATT&CK technique:** T1070 – Indicator Removal on Host
 - **Source URL:** https://attack.mitre.org/techniques/T1070/
 
+
+### Essential Commands & Features
+
+Mastering **conditional breakpoints** and **memory search** in x64dbg accelerates API tracing and Original Entry Point (OEP) discovery—critical for analyzing packed malware (e.g., **T1027.001: Software Packing**) or detecting process injection (e.g., **T1055.002: Portable Executable Injection**).
+
+#### Conditional Breakpoints
+Use `SetBPX` with conditions to filter noise. For example, break only if `EAX` holds a specific API address (e.g., `VirtualAlloc`):
+```bash
+SetBPX kernel32.VirtualAlloc, "EAX == 0x7FFE0000"
+```
+**When to use**: Isolate calls with suspicious parameters (e.g., `flProtect=0x40` for `PAGE_EXECUTE_READWRITE`).
+
+#### Memory Search
+Leverage the **Memory Map** (`Alt+M`) to search for patterns (e.g., shellcode signatures) or dump regions:
+1. Right-click a memory region → **Find Pattern** (`Ctrl+B`).
+2. Search for `C3` (RET) to locate function epilogues, aiding OEP recovery in stripped binaries.
+3. Use **Find References** (`Ctrl+R`) on API addresses (e.g., `CreateRemoteThread`) to trace cross-references.
+
+**Pro Tip**: Combine with **Trace Into** (`F7`) and **Log Breakpoint** (`Shift+F2`) to record execution flow without manual stepping.
+
+**Sources**:
+- [x64dbg Official Wiki: Breakpoints](https://wiki.x64dbg.com/en/latest/commands/breakpoints/index.html)
+- [SANS FOR610: Memory Forensics & Malware Analysis](https://www.sans.org/blog/for610-memory-forensics-and-malware-analysis/)
+
+### Common Pitfalls & Result Validation
+
+Analysts frequently misinterpret x64dbg outputs, leading to false conclusions. A common pitfall is **overlooking anti-debugging techniques** (e.g., **T1621: Debugger Evasion**), where malware detects breakpoints or single-stepping via `IsDebuggerPresent()` or `NtQueryInformationProcess`. This can cause the sample to alter behavior or crash, invalidating analysis. Always validate by checking for suspicious API calls or conditional jumps that depend on debug-related flags. Another mistake is **assuming static disassembly matches runtime execution**, particularly with **T1648: Serverless Execution**, where code may unpack or decrypt payloads dynamically. Relying solely on static views (e.g., the *Disassembly* tab) without cross-referencing the *Memory Map* or *Dump* can miss critical artifacts.
+
+To validate findings:
+1. **Cross-check breakpoints**: Use hardware breakpoints (`Shift+F2`) instead of software breakpoints (`F2`) to evade detection.
+2. **Monitor memory changes**: Compare the *Memory Map* before/after suspicious calls to detect injected code or unpacked payloads.
+3. **Reproduce behavior**: Restart the session and re-execute to confirm consistency, especially after crashes or unexpected exits.
+
+Avoid false positives by documenting all steps and correlating x64dbg outputs with external tools (e.g., Process Hacker for memory forensics). For authoritative guidance, refer to:
+- [CERT-EU’s Malware Analysis Guide (Anti-Debugging)](https://cert.europa.eu/static/WhitePapers/CERT-EU-SWP_17_001_Malware_Analysis.pdf)
+- [FLARE VM Documentation (Debugging Pitfalls)](https://github.com/mandiant/flare-vm)
+
 ## Sources
 Claim → authoritative source mapping (all URLs are real, official/vendor/authoritative pages):
 
@@ -381,3 +418,8 @@ Claim → authoritative source mapping (all URLs are real, official/vendor/autho
 - https://attack.mitre.org/techniques/T1070/
 
 <!-- cyberlab-enriched: v5 -->
+- https://wiki.x64dbg.com/en/latest/commands/breakpoints/index.html
+- https://www.sans.org/blog/for610-memory-forensics-and-malware-analysis/
+- https://cert.europa.eu/static/WhitePapers/CERT-EU-SWP_17_001_Malware_Analysis.pdf
+
+<!-- cyberlab-enriched: v6 -->
