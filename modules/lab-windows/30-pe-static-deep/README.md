@@ -364,6 +364,53 @@ level: informational
 **Authoritative Source:**
 - [Microsoft PE Format Documentation](https://docs.microsoft.com/en-us/windows/win32/debug/pe-format)
 
+
+### Essential Commands & Features
+
+PE-bear’s advanced static analysis capabilities extend beyond basic header inspection. Below are **critical but often overlooked features**, each demonstrated with a concrete example and use case:
+
+1. **Missing Overlay Parsing**
+   Use when: Suspecting appended data (e.g., embedded payloads or config files) not reflected in section headers.
+   Example: `pe-bear -f malware.exe --overlay`
+   *Flags the overlay offset/size in the "Overlay" tab, enabling extraction via `dd if=malware.exe of=overlay.bin bs=1 skip=$OFFSET`.*
+   **MITRE ATT&CK**: [T1027.004 Obfuscated Files or Information: Compile After Delivery](https://attack.mitre.org/techniques/T1027/004/)
+
+2. **TLS Callbacks**
+   Use when: Hunting for stealthy execution (e.g., code running before `main()`).
+   Example: `pe-bear -f sample.dll --tls`
+   *Displays callback addresses in the "TLS" tab. Cross-reference with disassembly to identify suspicious pre-initialization routines.*
+   **MITRE ATT&CK**: [T1574.009 Hijack Execution Flow: Path Interception by Search Order Hijacking](https://attack.mitre.org/techniques/T1574/009/)
+
+3. **Security Directory (Certificate/Manifest)**
+   Use when: Analyzing signed binaries or side-loading risks.
+   Example: `pe-bear -f signed.exe --security`
+   *Reveals certificate thumbprints and manifest entries (e.g., `<requestedExecutionLevel>`). Validate signatures with `signtool verify /v signed.exe`.*
+   **Relevant to**: [T1553.003 Subvert Trust Controls: SIP and Trust Provider Hijacking](https://attack.mitre.org/techniques/T1553/003/)
+
+4. **Rich Header Analysis**
+   Use when: Attributing compiler/linker versions or detecting tampering.
+   Example: `pe-bear -f builder.exe --rich`
+   *Decodes the XOR’d header (e.g., `Visual Studio 2019 16.11.31702.278`). Anomalies may indicate [T1588.002 Obtain Capabilities: Tool](https://attack.mitre.org/techniques/T1588/002/).*
+
+**Authoritative Sources**:
+- PE-bear GitHub Wiki: [Advanced Features](https://github.com/hasherezade/pe-bear/wiki/Advanced-Features)
+- OALabs: [PE-Bear Deep Dive](https://www.youtube.com/watch?v=Wq
+
+### Adversary Emulation & Red-Team Perspective
+
+From an adversary’s perspective, **30+ PE static deep analysis** is a goldmine for identifying exploitable weaknesses before execution. Attackers leverage static analysis to extract hardcoded credentials (e.g., API keys, passwords), uncover obfuscated payloads, or map out function imports/exports for **Reflective Code Loading (T1620)**—a technique where malicious code is injected into memory without touching disk, evading traditional file-based detection. For example, red teams may parse `.reloc` sections to identify memory regions suitable for **Process Hollowing (T1055.012)**, where legitimate processes are hollowed out and replaced with malicious code, leaving minimal forensic traces beyond anomalous memory artifacts.
+
+Evasion considerations are critical: attackers may split payloads across multiple PE sections, use **indirect jumps (T1622)** to obfuscate control flow, or embed decoy strings to mislead analysts. Static analysis artifacts—such as unusual section names (e.g., `.crt` instead of `.text`), mismatched entry points, or excessive zero-padding—can betray tampering. To evade detection, adversaries may also strip debug symbols, compress sections with UPX, or employ **binary padding (T1027.001)** to inflate file size beyond typical scanner thresholds.
+
+**Key TTPs & Artifacts:**
+- **T1620 (Reflective Code Loading):** Static analysis reveals `LoadLibrary`/`GetProcAddress` calls without corresponding DLL imports.
+- **T1622 (Debugger Evasion):** Detection of anti-debugging tricks (e.g., `IsDebuggerPresent` checks) or indirect jumps to thwart disassembly.
+- **Artifacts:** Unusual section permissions (e.g., `.text` marked as writable), orphaned strings, or mismatched PE headers.
+
+**Sources:**
+- [NCC Group: PE File Format Deep Dive](https://research.nccgroup.com/2022/01/20/pe-file-format-deep-dive/)
+- [FireEye: Red Team Techniques for Evading Static Analysis](https://www.fireeye.com/blog/threat-research/2021/08/red-team-techniques-for-evading-static-analysis.html)
+
 ## Sources
 Claim → source mapping (all URLs are official tool docs/repos, Microsoft Learn, MITRE ATT&CK, or Security Onion docs):
 
@@ -405,3 +452,12 @@ Claim → source mapping (all URLs are official tool docs/repos, Microsoft Learn
 - https://docs.microsoft.com/en-us/windows/win32/debug/pe-format"
 
 <!-- cyberlab-enriched: v5 -->
+- https://attack.mitre.org/techniques/T1027/004/
+- https://attack.mitre.org/techniques/T1574/009/
+- https://attack.mitre.org/techniques/T1553/003/
+- https://attack.mitre.org/techniques/T1588/002/
+- https://www.youtube.com/watch?v=Wq
+- https://research.nccgroup.com/2022/01/20/pe-file-format-deep-dive/
+- https://www.fireeye.com/blog/threat-research/2021/08/red-team-techniques-for-evading-static-analysis.html
+
+<!-- cyberlab-enriched: v6 -->
